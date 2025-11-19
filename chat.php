@@ -811,8 +811,6 @@
                             
                             // Re-attach suggestion click events
                             attachSuggestionEvents();
-                            
-                            console.log('Messages updated:', newMessageCount, 'messages');
                         } else {
                             console.log('No changes in messages, skipped update');
                         }
@@ -821,11 +819,9 @@
                         loadMessagesErrorCount = 0;
                     }
                 } else {
-                    console.error('Failed to load messages:', response.status);
                     loadMessagesErrorCount++;
                 }
             } catch (error) {
-                console.error('Error loading messages:', error);
                 loadMessagesErrorCount++;
             } finally {
                 isLoadingMessages = false;
@@ -888,13 +884,11 @@
                 }
                 
                 const text = await response.text();
-                console.log('Raw response:', text);
                 
                 let result;
                 try {
                     result = JSON.parse(text);
                 } catch (parseError) {
-                    console.error('JSON parse error:', parseError, 'Response text:', text);
                     throw new Error('Invalid response from server');
                 }
                 
@@ -929,8 +923,6 @@
             
             // Poll online status every 30 seconds
             statusPollingInterval = setInterval(updateOnlineStatus, 30000);
-            
-            console.log('Polling started');
         }
         
         function stopPolling() {
@@ -942,7 +934,6 @@
                 clearInterval(statusPollingInterval);
                 statusPollingInterval = null;
             }
-            console.log('Polling stopped');
         }
         
         // Use Page Visibility API to pause polling when tab is not active
