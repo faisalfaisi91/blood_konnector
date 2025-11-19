@@ -198,7 +198,23 @@
   </div>
 
 
-  <!-- BOXES -->
+  <!-- BOXES - Only show on homepage -->
+  <?php 
+  // Get the current page name without query string
+  $current_page = basename($_SERVER['PHP_SELF']);
+  $request_uri = $_SERVER['REQUEST_URI'];
+  
+  // Show only on homepage (index.php, /, /blood_konnector/, or /blood_konnector/index)
+  $is_homepage = (
+      $current_page === 'index.php' || 
+      $request_uri === '/' || 
+      $request_uri === '/blood_konnector/' || 
+      $request_uri === '/blood_konnector/index' ||
+      $request_uri === '/blood_konnector'
+  );
+  
+  if ($is_homepage): 
+  ?>
   <div class="fixed-buttons">
     <a href="Blood_konnector.apk" download>
         <div class="button bg-warning download" title="Download The App Now">
@@ -214,3 +230,4 @@
       <img src="assets/images/donation-icon.png" alt="Donation" style="width: 120% !important; height: 110% !important;" />
     </div>
   </div>
+  <?php endif; ?>
