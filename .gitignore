@@ -1,5 +1,6 @@
 # Environment configuration
 .env
+.htaccess
 
 # Log files
 *.log

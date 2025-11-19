@@ -1,6 +1,6 @@
 <IfModule mod_rewrite.c>
     RewriteEngine On
-    RewriteBase /blood_konnector/
+    RewriteBase /
 
     # Remove .php extension
     RewriteCond %{REQUEST_FILENAME} !-d
@@ -8,8 +8,8 @@
     RewriteRule ^([^/]+)/?$ $1.php [L]
 
     # Redirect /index.php to /
-    RewriteCond %{THE_REQUEST} ^[A-Z]{3,9}\ /blood_konnector/index\.php\ HTTP/
-    RewriteRule ^index\.php$ /blood_konnector/ [R=301,L]
+    RewriteCond %{THE_REQUEST} ^[A-Z]{3,9}\ /index\.php\ HTTP/
+    RewriteRule ^index\.php$ / [R=301,L]
 </IfModule>
 
 # php -- BEGIN cPanel-generated handler, do not edit
