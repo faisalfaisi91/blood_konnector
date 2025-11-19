@@ -1,10 +1,12 @@
 <?php
-	$servername = "localhost";
-    $username = "root";
-	$password = ""; 
-	// $username = "bloodkon_bloodkon_bk";
-	// $password = "{Ok#76DVx,q+2.a$"; 
-	$database = "bloodkon_bk";
+	// Load environment configuration
+	require_once __DIR__ . '/../config.php';
+
+	// Get database credentials from environment variables
+	$servername = env('DB_HOST', 'localhost');
+	$username = env('DB_USERNAME', 'root');
+	$password = env('DB_PASSWORD', '');
+	$database = env('DB_DATABASE', 'bloodkon_bk');
 	
 	// Create connection
 	$conn = new mysqli($servername, $username, $password, $database);

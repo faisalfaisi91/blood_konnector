@@ -1,0 +1,28 @@
+# Environment configuration
+.env
+
+# Log files
+*.log
+error_log
+error.log
+app_errors.log
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE files
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+
+# Temporary files
+*.tmp
+*.bak
+*.swp
+*~
+
+# APK files (if building locally)
+*.apk
+
