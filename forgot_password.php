@@ -223,16 +223,51 @@ function sendResetEmail($email, $first_name, $reset_token) {
         <script>
             Swal.fire({
                 icon: '<?php echo $alert_type; ?>',
-                title: '<?php echo $alert_type === "success" ? "Success!" : "Error!"; ?>',
-                text: '<?php echo $alert_message; ?>',
-                timer: 5000,
-                showConfirmButton: false
+                title: '<?php echo $alert_type === "success" ? "✅ Email Sent!" : "❌ Error!"; ?>',
+                html: '<?php echo $alert_message; ?><?php if($alert_type === "success"): ?><br><br><strong style="color: #EA062B;">📧 Please check your email inbox and spam folder!</strong><?php endif; ?>',
+                confirmButtonText: 'OK, Got it!',
+                confirmButtonColor: '#EA062B',
+                allowOutsideClick: false,
+                showConfirmButton: true
             });
         </script>
     <?php endif; ?>
 
     <section class="ptb-100">
         <div class="auth-container">
+            
+            <?php if ($alert_message && $alert_type === "success"): ?>
+                <!-- Success Message Box - Stays visible on page -->
+                <div class="alert alert-success" style="background: #d4edda; border: 2px solid #28a745; border-radius: 12px; padding: 25px; margin-bottom: 30px; text-align: center;">
+                    <div style="font-size: 60px; margin-bottom: 15px;">✅</div>
+                    <h3 style="color: #155724; margin-bottom: 15px; font-weight: 700; font-size: 24px;">Email Sent Successfully!</h3>
+                    <p style="color: #155724; margin-bottom: 20px; font-size: 16px; line-height: 1.6;">
+                        <?php echo $alert_message; ?>
+                    </p>
+                    <div style="background: #c3e6cb; padding: 20px; border-radius: 8px; margin: 20px 0; text-align: left;">
+                        <strong style="color: #155724; font-size: 16px;">
+                            <i class="fas fa-info-circle"></i> Next Steps:
+                        </strong>
+                        <ol style="margin: 15px 0 0 0; padding-left: 20px; color: #155724; font-size: 15px; line-height: 2;">
+                            <li>Check your email inbox</li>
+                            <li>Look in your spam/junk folder if you don't see it</li>
+                            <li>Click the password reset link (valid for 1 hour)</li>
+                            <li>Create your new password</li>
+                        </ol>
+                    </div>
+                    <a href="sign-in.php" class="btn btn-lg mt-3" style="background: #28a745; color: white; border: none; padding: 12px 30px; text-decoration: none; border-radius: 8px; display: inline-block;">
+                        <i class="fas fa-arrow-left"></i> Back to Sign In
+                    </a>
+                </div>
+            <?php elseif ($alert_message && $alert_type === "danger"): ?>
+                <!-- Error Message Box -->
+                <div class="alert alert-danger" style="background: #f8d7da; border: 2px solid #dc3545; border-radius: 12px; padding: 25px; margin-bottom: 30px; text-align: center;">
+                    <div style="font-size: 60px; margin-bottom: 15px;">❌</div>
+                    <h3 style="color: #721c24; margin-bottom: 15px; font-weight: 700;">Error</h3>
+                    <p style="color: #721c24; font-size: 16px;"><?php echo $alert_message; ?></p>
+                </div>
+            <?php endif; ?>
+            
             <div class="auth-header">
                 <div class="auth-icon">
                     <i class="fas fa-key"></i>
@@ -241,7 +276,7 @@ function sendResetEmail($email, $first_name, $reset_token) {
                 <p class="text-muted">Enter your registered email to receive a password reset link</p>
             </div>
 
-            <form method="POST">
+            <form method="POST" id="forgotForm">
                 <div class="mb-3">
                     <label class="form-label">Email Address</label>
                     <div class="input-group">
@@ -252,8 +287,13 @@ function sendResetEmail($email, $first_name, $reset_token) {
                     </div>
                 </div>
                 
-                <button type="submit" class="btn btn-primary mt-4">
-                    Send Reset Link <i class="fas fa-arrow-right ms-2"></i>
+                <button type="submit" class="btn btn-primary mt-4" id="submitBtn">
+                    <span class="btn-text">
+                        Send Reset Link <i class="fas fa-arrow-right ms-2"></i>
+                    </span>
+                    <span class="btn-loading" style="display: none;">
+                        <i class="fas fa-spinner fa-spin"></i> Sending Email...
+                    </span>
                 </button>
             </form>
 
@@ -265,5 +305,20 @@ function sendResetEmail($email, $first_name, $reset_token) {
 
     <?php include('assets/includes/footer.php'); ?>
     <?php include('assets/includes/link-js.php'); ?>
+    
+    <script>
+        // Loading state for form submission
+        document.getElementById('forgotForm').addEventListener('submit', function(e) {
+            const btn = document.getElementById('submitBtn');
+            const btnText = btn.querySelector('.btn-text');
+            const btnLoading = btn.querySelector('.btn-loading');
+            
+            // Show loading state
+            btnText.style.display = 'none';
+            btnLoading.style.display = 'inline';
+            btn.disabled = true;
+            btn.style.opacity = '0.7';
+        });
+    </script>
 </body>
 </html>

@@ -75,6 +75,7 @@
   <link rel="stylesheet" href="assets/css/all.css">
   <link rel="stylesheet" href="assets/css/slick.css">
   <link rel="stylesheet" href="assets/css/fancybox.css">
+  <link rel="stylesheet" href="assets/css/profile-switcher.css">
   <link rel="stylesheet" href="assets/css/style.css">
 
   <script type="text/javascript">

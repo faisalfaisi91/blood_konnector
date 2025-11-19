@@ -1,86 +1,43 @@
 <?php
 session_start();
 include("assets/lib/openconn.php");
+require_once("assets/lib/ProfileManager.php");
 
-// =============== 1. MUST BE LOGGED IN ===============
-if (!isset($_SESSION['user_id'])) {
-    header("Location: sign-in");
-    exit();
+// =============== 1. INITIALIZE PROFILE MANAGER ===============
+$profileManager = new ProfileManager($conn);
+
+// =============== 2. MUST BE LOGGED IN ===============
+$profileManager->requireLogin();
+
+// =============== 3. UPDATE LAST ACTIVITY ===============
+$profileManager->updateLastActivity();
+
+// =============== 4. FETCH USER CORE DATA ===============
+$user = $profileManager->getUserInfo();
+if (!$user) {
+    die("User not found");
 }
-$user_id = $_SESSION['user_id'];
 
-// =============== 2. FETCH USER CORE DATA ===============
-$user_query = $conn->prepare("SELECT * FROM users WHERE user_id = ?");
-$user_query->bind_param("s", $user_id);
-$user_query->execute();
-$user_result = $user_query->get_result();
-if ($user_result->num_rows === 0) die("User not found");
-$user = $user_result->fetch_assoc();
-$user_query->close();
+// =============== 5. CHECK USER ROLES ===============
+$roles = $profileManager->getUserRoles();
+$is_donor = $roles['is_donor'];
+$is_recipient = $roles['is_recipient'];
 
-// =============== 3. CHECK ROLES ===============
-$is_donor = false;
-$is_recipient = false;
-
-$donor_check = $conn->prepare("SELECT donor_id FROM donors WHERE user_id = ?");
-$donor_check->bind_param("s", $user_id);
-$donor_check->execute();
-$is_donor = $donor_check->get_result()->num_rows > 0;
-$donor_check->close();
-
-$recip_check = $conn->prepare("SELECT recipient_id FROM recipients WHERE user_id = ?");
-$recip_check->bind_param("s", $user_id);
-$recip_check->execute();
-$is_recipient = $recip_check->get_result()->num_rows > 0;
-$recip_check->close();
-
-// =============== 4. ACTIVE PROFILE MANAGEMENT ===============
-
-// Default: no active mode
-$active_mode = $_SESSION['active_profile'] ?? null; // 'donor' | 'recipient' | null
-
-// Handle Switch Request
-if (isset($_GET['activate'])) {
-    $requested = $_GET['activate']; // 'donor' or 'recipient'
-
-    if ($requested === 'donor' && $is_donor) {
-        $_SESSION['active_profile'] = 'donor';
-        // Deactivate recipient if exists
-        if ($is_recipient) {
-            $conn->query("UPDATE recipients SET status = 'inactive' WHERE user_id = '$user_id'");
-        }
+// =============== 6. HANDLE QUICK NAVIGATION ===============
+// Optional: Quick navigation to profile pages
+// Users can still use the profile switcher in header
+if (isset($_GET['view'])) {
+    $view = $_GET['view'];
+    
+    if ($view === 'donor' && $is_donor) {
         header("Location: donor-profile");
         exit();
     }
-
-    if ($requested === 'recipient' && $is_recipient) {
-        $_SESSION['active_profile'] = 'recipient';
-        // Deactivate donor if exists
-        if ($is_donor) {
-            $conn->query("UPDATE donors SET status = 'inactive' WHERE user_id = '$user_id'");
-        }
+    
+    if ($view === 'recipient' && $is_recipient) {
         header("Location: recipient-profile");
         exit();
     }
-}
-
-// Auto-redirect if a profile is already active
-if ($active_mode === 'donor' && $is_donor) {
-    $conn->query("UPDATE donors SET status = 'active' WHERE user_id = '$user_id'");
-    if ($is_recipient) {
-        $conn->query("UPDATE recipients SET status = 'inactive' WHERE user_id = '$user_id'");
-    }
-    header("Location: donor-profile");
-    exit();
-}
-
-if ($active_mode === 'recipient' && $is_recipient) {
-    $conn->query("UPDATE recipients SET status = 'active' WHERE user_id = '$user_id'");
-    if ($is_donor) {
-        $conn->query("UPDATE donors SET status = 'inactive' WHERE user_id = '$user_id'");
-    }
-    header("Location: recipient-profile");
-    exit();
 }
 
 // =============== 5. PROFILE PICTURE UPLOAD (Unchanged) ===============
@@ -94,12 +51,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['profile_pic'])) {
 
     if ($file['error'] === 0 && in_array($file['type'], $allowed) && $file['size'] <= $max) {
         $ext = pathinfo($file['name'], PATHINFO_EXTENSION);
-        $new = "profile_{$user_id}_" . uniqid() . ".$ext";
+        $new = "profile_{$user['user_id']}_" . uniqid() . ".$ext";
         $path = $targetDir . $new;
 
         if (move_uploaded_file($file['tmp_name'], $path)) {
             $stmt = $conn->prepare("UPDATE users SET profile_pic = ? WHERE user_id = ?");
-            $stmt->bind_param("ss", $path, $user_id);
+            $stmt->bind_param("ss", $path, $user['user_id']);
             $stmt->execute();
             $_SESSION['success'] = "Profile picture updated!";
             $stmt->close();
@@ -107,33 +64,66 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['profile_pic'])) {
     }
 }
 
-// =============== 6. ONLINE STATUS ===============
-$conn->query("UPDATE users SET last_activity = NOW() WHERE user_id = '$user_id'");
-$online = false;
-$la = $conn->query("SELECT last_activity FROM users WHERE user_id = '$user_id'")->fetch_assoc()['last_activity'];
-$online = (time() - strtotime($la)) < 300;
+// =============== 7. ONLINE STATUS ===============
+$online = $profileManager->isUserOnline();
 ?>
 <!DOCTYPE html>
 <html lang="en">
 <head>
   <?php include('assets/includes/link-css.php'); ?>
   <style>
-    .profile-container { max-width:800px; margin:0 auto; padding:30px; background:#fff; border-radius:15px; box-shadow:0 10px 30px rgba(0,0,0,.1); text-align:center; }
+    .profile-container { max-width:900px; margin:0 auto; padding:30px; background:#fff; border-radius:15px; box-shadow:0 10px 30px rgba(0,0,0,.1); text-align:center; }
     .status-badge { display:inline-block; padding:6px 14px; border-radius:20px; font-size:13px; font-weight:bold; }
     .online { background:#28a745; color:#fff; }
     .offline { background:#dc3545; color:#fff; }
-    .mode-switch { margin:25px 0; display:flex; justify-content:center; gap:15px; flex-wrap:wrap; }
-    .mode-btn { padding:12px 28px; border-radius:8px; font-weight:600; text-decoration:none; transition:.3s; }
-    .btn-donor { background:#28a745; color:#fff; }
-    .btn-recipient { background:#EA062B; color:#fff; }
-    .btn-active { opacity:0.7; cursor:default; pointer-events:none; }
-    .action-buttons { display:flex; justify-content:center; gap:12px; flex-wrap:wrap; margin-top:20px; }
-    .action-buttons a { padding:10px 20px; border-radius:6px; font-size:15px; color:#fff; text-decoration:none; }
+    
+    /* Profile Cards Overview */
+    .profiles-overview { display:grid; grid-template-columns:repeat(auto-fit, minmax(300px, 1fr)); gap:25px; margin:30px 0; }
+    .profile-card { background:linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%); padding:30px; border-radius:15px; box-shadow:0 5px 15px rgba(0,0,0,.08); transition:all .3s ease; text-align:center; border:2px solid transparent; }
+    .profile-card:hover { transform:translateY(-5px); box-shadow:0 10px 25px rgba(0,0,0,.12); }
+    .donor-card { border-color:#28a745; }
+    .donor-card:hover { background:linear-gradient(135deg, #d4edda 0%, #c3e6cb 100%); }
+    .recipient-card { border-color:#EA062B; }
+    .recipient-card:hover { background:linear-gradient(135deg, #f8d7da 0%, #f5c6cb 100%); }
+    
+    .profile-icon { width:80px; height:80px; margin:0 auto 20px; background:#fff; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:35px; box-shadow:0 4px 10px rgba(0,0,0,.1); }
+    .donor-card .profile-icon { color:#28a745; }
+    .recipient-card .profile-icon { color:#EA062B; }
+    
+    .profile-card h3 { font-size:22px; margin:15px 0 10px; color:#2c3e50; font-weight:700; }
+    .profile-card p { font-size:14px; color:#6c757d; margin-bottom:15px; }
+    
+    .availability-badge { display:inline-block; padding:8px 16px; border-radius:20px; font-size:12px; font-weight:600; margin:15px 0; }
+    .status-available { background:#28a745; color:#fff; }
+    .status-busy { background:#ffc107; color:#000; }
+    .status-inactive { background:#6c757d; color:#fff; }
+    .status-active { background:#007bff; color:#fff; }
+    .status-fulfilled { background:#28a745; color:#fff; }
+    .status-cancelled { background:#dc3545; color:#fff; }
+    
+    .view-profile-btn { display:inline-block; margin-top:15px; padding:12px 25px; background:#007bff; color:#fff; text-decoration:none; border-radius:8px; font-weight:600; transition:.3s; }
+    .view-profile-btn:hover { background:#0056b3; transform:scale(1.05); }
+    .donor-card .view-profile-btn { background:#28a745; }
+    .donor-card .view-profile-btn:hover { background:#218838; }
+    .recipient-card .view-profile-btn { background:#EA062B; }
+    .recipient-card .view-profile-btn:hover { background:#c40524; }
+    
+    .action-buttons { display:flex; justify-content:center; gap:12px; flex-wrap:wrap; margin-top:30px; }
+    .action-buttons a { padding:12px 25px; border-radius:8px; font-size:15px; color:#fff; text-decoration:none; font-weight:600; transition:.3s; }
+    .action-buttons a:hover { transform:translateY(-2px); box-shadow:0 5px 15px rgba(0,0,0,.2); }
     .logout-btn { background:#dc3545; }
+    
     .profile-image-container { position:relative; width:150px; height:150px; margin:0 auto 20px; cursor:pointer; }
-    .profile-image { width:100%; height:100%; border-radius:50%; object-fit:cover; border:4px solid #007bff; }
-    .upload-overlay { position:absolute; bottom:8px; right:8px; background:#007bff; color:#fff; width:38px; height:38px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:18px; }
-    .current-mode { background:#f8f9fa; padding:12px; border-radius:8px; margin:15px 0; font-weight:500; color:#333; }
+    .profile-image { width:100%; height:100%; border-radius:50%; object-fit:cover; border:4px solid #007bff; transition:.3s; }
+    .profile-image:hover { transform:scale(1.05); }
+    .upload-overlay { position:absolute; bottom:8px; right:8px; background:#007bff; color:#fff; width:38px; height:38px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:18px; transition:.3s; }
+    .upload-overlay:hover { background:#0056b3; }
+    
+    @media (max-width: 768px) {
+      .profiles-overview { grid-template-columns:1fr; gap:20px; }
+      .profile-card { padding:25px; }
+      .profile-icon { width:70px; height:70px; font-size:30px; }
+    }
   </style>
 </head>
 <body>
@@ -177,28 +167,48 @@ $online = (time() - strtotime($la)) < 300;
             <h2><?=htmlspecialchars($user['first_name'].' '.$user['last_name'])?></h2>
             <p><strong>Email:</strong> <?=htmlspecialchars($user['email'])?></p>
 
-            <!-- Current Active Profile -->
-            <?php if ($active_mode): ?>
-              <div class="current-mode">
-                Currently Active: <strong><?=_ucfirst($active_mode)?> Mode</strong>
-              </div>
-            <?php else: ?>
-              <div class="current-mode" style="color:#666;">
-                No profile active. Choose one to continue.
-              </div>
-            <?php endif; ?>
-
-            <!-- SWITCH BUTTONS -->
-            <div class="mode-switch">
+            <!-- USER PROFILES OVERVIEW -->
+            <div class="profiles-overview">
               <?php if ($is_donor): ?>
-                <a href="?activate=donor" class="mode-btn btn-donor <?= ($active_mode==='donor')?'btn-active':'' ?>">
-                  <?= ($active_mode==='donor') ? 'Active Donor' : 'Activate Donor' ?>
-                </a>
+                <div class="profile-card donor-card">
+                  <div class="profile-icon">
+                    <i class="fas fa-hand-holding-heart"></i>
+                  </div>
+                  <h3>Donor Profile</h3>
+                  <p>Help save lives by donating blood</p>
+                  <?php 
+                  $donor_availability = $profileManager->getDonorAvailability();
+                  $availability_label = $donor_availability === 'available' ? 'Available' : ($donor_availability === 'busy' ? 'Busy' : 'Inactive');
+                  $availability_class = $donor_availability === 'available' ? 'status-available' : ($donor_availability === 'busy' ? 'status-busy' : 'status-inactive');
+                  ?>
+                  <span class="availability-badge <?= $availability_class ?>">
+                    <?= $availability_label ?>
+                  </span>
+                  <a href="donor-profile" class="view-profile-btn">
+                    <i class="fas fa-arrow-right"></i> View Profile
+                  </a>
+                </div>
               <?php endif; ?>
+              
               <?php if ($is_recipient): ?>
-                <a href="?activate=recipient" class="mode-btn btn-recipient <?= ($active_mode==='recipient')?'btn-active':'' ?>">
-                  <?= ($active_mode==='recipient') ? 'Active Recipient' : 'Activate Recipient' ?>
-                </a>
+                <div class="profile-card recipient-card">
+                  <div class="profile-icon">
+                    <i class="fas fa-hospital-user"></i>
+                  </div>
+                  <h3>Recipient Profile</h3>
+                  <p>Find donors for blood transfusion</p>
+                  <?php 
+                  $recipient_status = $profileManager->getRecipientStatus();
+                  $status_label = $recipient_status === 'active' ? 'Request Active' : ($recipient_status === 'fulfilled' ? 'Fulfilled' : 'Cancelled');
+                  $status_class = $recipient_status === 'active' ? 'status-active' : ($recipient_status === 'fulfilled' ? 'status-fulfilled' : 'status-cancelled');
+                  ?>
+                  <span class="availability-badge <?= $status_class ?>">
+                    <?= $status_label ?>
+                  </span>
+                  <a href="recipient-profile" class="view-profile-btn">
+                    <i class="fas fa-arrow-right"></i> View Profile
+                  </a>
+                </div>
               <?php endif; ?>
             </div>
 

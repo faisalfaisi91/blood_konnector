@@ -1,0 +1,327 @@
+/**
+ * Profile Switcher Component Styles
+ * Modern, user-friendly dropdown for switching between donor/recipient profiles
+ */
+
+/* Fix header layout to accommodate profile switcher */
+.header_search_menu {
+    display: flex !important;
+    align-items: center !important;
+    justify-content: flex-end !important;
+    flex-wrap: nowrap !important;
+    gap: 10px !important;
+}
+
+.header_search_menu > * {
+    flex-shrink: 0;
+}
+
+.header_search_menu .dropdown_search {
+    flex-shrink: 0;
+}
+
+/* Profile Switcher Container */
+.profile-switcher-dropdown {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    margin-left: 0;
+    margin-right: 0;
+    flex-shrink: 0;
+}
+
+/* Profile Switcher Button */
+.profile-switcher-btn {
+    background: linear-gradient(135deg, #EA062B 0%, #c40524 100%);
+    color: #fff;
+    border: none;
+    padding: 8px 16px;
+    border-radius: 20px;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    transition: all 0.3s ease;
+    box-shadow: 0 2px 6px rgba(234, 6, 43, 0.2);
+    white-space: nowrap;
+    height: 36px;
+    line-height: 1;
+}
+
+.profile-switcher-btn:hover {
+    background: linear-gradient(135deg, #c40524 0%, #a00420 100%);
+    box-shadow: 0 4px 12px rgba(234, 6, 43, 0.3);
+    transform: translateY(-2px);
+}
+
+.profile-switcher-btn:active {
+    transform: translateY(0);
+}
+
+.profile-switcher-btn i.fa-chevron-down {
+    font-size: 12px;
+    transition: transform 0.3s ease;
+}
+
+.profile-switcher-btn.active i.fa-chevron-down {
+    transform: rotate(180deg);
+}
+
+/* Current Profile Label */
+.current-profile-label {
+    font-weight: 600;
+}
+
+/* Profile Switcher Dropdown Menu */
+.profile-switcher-menu {
+    position: absolute;
+    top: calc(100% + 8px);
+    right: 0;
+    background: #fff;
+    border-radius: 12px;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
+    min-width: 200px;
+    opacity: 0;
+    visibility: hidden;
+    transform: translateY(-10px);
+    transition: all 0.3s ease;
+    z-index: 9999;
+    overflow: hidden;
+    border: 1px solid rgba(0, 0, 0, 0.08);
+}
+
+.profile-switcher-menu.show {
+    opacity: 1;
+    visibility: visible;
+    transform: translateY(0);
+}
+
+/* Profile Options */
+.profile-option {
+    display: flex;
+    align-items: center;
+    padding: 14px 20px;
+    color: #333;
+    text-decoration: none;
+    transition: all 0.2s ease;
+    border-bottom: 1px solid rgba(0, 0, 0, 0.05);
+    gap: 12px;
+    font-size: 14px;
+    font-weight: 500;
+}
+
+.profile-option:last-child {
+    border-bottom: none;
+}
+
+.profile-option:hover {
+    background: linear-gradient(90deg, rgba(234, 6, 43, 0.05) 0%, rgba(234, 6, 43, 0.02) 100%);
+    padding-left: 24px;
+}
+
+.profile-option.active {
+    background: linear-gradient(90deg, rgba(234, 6, 43, 0.1) 0%, rgba(234, 6, 43, 0.05) 100%);
+    color: #EA062B;
+    font-weight: 600;
+}
+
+.profile-option i.fa-hand-holding-heart,
+.profile-option i.fa-hospital-user {
+    font-size: 18px;
+    width: 24px;
+    text-align: center;
+}
+
+.profile-option i.fa-check-circle {
+    margin-left: auto;
+    color: #28a745;
+    font-size: 16px;
+}
+
+/* Simple Profile Badge (when user has only one role) */
+.profile-badge {
+    display: inline-flex;
+    align-items: center;
+    padding: 8px 16px;
+    border-radius: 20px;
+    font-size: 13px;
+    font-weight: 600;
+    margin-left: 0;
+    margin-right: 0;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
+    height: 36px;
+    line-height: 1;
+    flex-shrink: 0;
+}
+
+.profile-badge.donor-badge {
+    background: linear-gradient(135deg, #28a745 0%, #20873a 100%);
+    color: #fff;
+}
+
+.profile-badge.recipient-badge {
+    background: linear-gradient(135deg, #EA062B 0%, #c40524 100%);
+    color: #fff;
+}
+
+/* Responsive Design */
+@media (max-width: 1200px) {
+    .profile-switcher-dropdown {
+        margin-left: 6px;
+        margin-right: 6px;
+    }
+    
+    .profile-switcher-btn,
+    .profile-badge {
+        padding: 6px 12px;
+        font-size: 12px;
+        height: 32px;
+    }
+}
+
+@media (max-width: 768px) {
+    .profile-switcher-dropdown {
+        margin-left: 4px;
+        margin-right: 4px;
+    }
+    
+    .profile-switcher-btn {
+        padding: 6px 10px;
+        font-size: 11px;
+        gap: 4px;
+        height: 30px;
+    }
+    
+    .profile-switcher-menu {
+        min-width: 180px;
+        right: -10px;
+    }
+    
+    .profile-option {
+        padding: 10px 14px;
+        font-size: 12px;
+    }
+    
+    .profile-badge {
+        padding: 6px 12px;
+        font-size: 11px;
+        margin-left: 4px;
+        margin-right: 4px;
+        height: 30px;
+    }
+}
+
+@media (max-width: 480px) {
+    .profile-switcher-dropdown {
+        margin-left: 2px;
+        margin-right: 2px;
+    }
+    
+    .profile-switcher-btn {
+        padding: 5px 10px;
+        font-size: 11px;
+        height: 28px;
+    }
+    
+    .current-profile-label {
+        display: none;
+    }
+    
+    .profile-switcher-btn i.fa-user-circle {
+        font-size: 16px;
+    }
+    
+    .profile-switcher-menu {
+        min-width: 160px;
+    }
+    
+    .profile-badge {
+        padding: 5px 10px;
+        font-size: 10px;
+        height: 28px;
+        margin-left: 2px;
+        margin-right: 2px;
+    }
+}
+
+/* Animation for dropdown appearance */
+@keyframes slideDown {
+    from {
+        opacity: 0;
+        transform: translateY(-10px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.profile-switcher-menu.show {
+    animation: slideDown 0.3s ease forwards;
+}
+
+/* Overlay for mobile (optional) */
+.profile-switcher-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.3);
+    opacity: 0;
+    visibility: hidden;
+    transition: all 0.3s ease;
+    z-index: 999;
+}
+
+.profile-switcher-overlay.show {
+    opacity: 1;
+    visibility: visible;
+}
+
+/* Tooltip for first-time users */
+.profile-switcher-tooltip {
+    position: absolute;
+    top: -45px;
+    right: 0;
+    background: #333;
+    color: #fff;
+    padding: 8px 12px;
+    border-radius: 6px;
+    font-size: 12px;
+    white-space: nowrap;
+    opacity: 0;
+    visibility: hidden;
+    transition: all 0.3s ease;
+}
+
+.profile-switcher-tooltip::after {
+    content: '';
+    position: absolute;
+    bottom: -6px;
+    right: 20px;
+    width: 0;
+    height: 0;
+    border-left: 6px solid transparent;
+    border-right: 6px solid transparent;
+    border-top: 6px solid #333;
+}
+
+.profile-switcher-dropdown:hover .profile-switcher-tooltip {
+    opacity: 1;
+    visibility: visible;
+}
+
+/* Accessibility improvements */
+.profile-switcher-btn:focus {
+    outline: 2px solid #EA062B;
+    outline-offset: 2px;
+}
+
+.profile-option:focus {
+    outline: 2px solid #EA062B;
+    outline-offset: -2px;
+}
+

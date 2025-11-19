@@ -9,4 +9,5 @@
   <script src="assets/js/smooth-scroll.min.js"></script>
   <script src="assets/js/nice-select.js"></script>
   <script src="assets/js/waypoints.js"></script>
+  <script src="assets/js/profile-switcher.js"></script>
   <script src="assets/js/script.js"></script>

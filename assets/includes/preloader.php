@@ -121,4 +121,47 @@
     50% { width: 100%; }
     100% { width: 0; }
   }
+  
+  /* Fade out animation */
+  .preloader.fade-out {
+    opacity: 0;
+    visibility: hidden;
+    transition: opacity 0.6s ease, visibility 0.6s ease;
+  }
 </style>
+
+<script>
+// Hide preloader when page loads - Multiple fallback methods for reliability
+(function() {
+    // Method 1: On window load
+    window.addEventListener('load', function() {
+        hidePreloader();
+    });
+    
+    // Method 2: On DOMContentLoaded (faster)
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', function() {
+            setTimeout(hidePreloader, 500);
+        });
+    } else {
+        // DOM already loaded
+        setTimeout(hidePreloader, 500);
+    }
+    
+    // Method 3: Fallback - force hide after 3 seconds
+    setTimeout(function() {
+        hidePreloader();
+    }, 3000);
+    
+    function hidePreloader() {
+        var preloader = document.querySelector('.preloader');
+        if (preloader) {
+            preloader.classList.add('fade-out');
+            // Remove from DOM after animation
+            setTimeout(function() {
+                preloader.style.display = 'none';
+            }, 700);
+        }
+    }
+})();
+</script>

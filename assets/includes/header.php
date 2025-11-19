@@ -45,7 +45,7 @@
                 </a>
             </div>
           </div>
-          <div class="col-xl-8 col-lg-8 d-none d-xxl-block d-xl-block">
+          <div class="col-xl-7 col-lg-7 d-none d-xxl-block d-xl-block">
             <ul class="main_menu">
               <li class="position-relative">
                 <a href="<?php echo isset($_SESSION['user_id']) ? 'dashboard' : 'index'; ?>">Home</a>
@@ -67,8 +67,8 @@
               </li>
             </ul>
           </div>
-          <div class="col-xl-2 col-lg-2  d-none d-xxl-block d-xl-block">
-            <div class="header_search_menu d-flex">
+          <div class="col-xl-3 col-lg-3 d-none d-xxl-block d-xl-block">
+            <div class="header_search_menu d-flex align-items-center justify-content-end">
              <div class="dropdown dropdown_search">
                   <?php if (isset($_SESSION['user_id'])): ?>
                       <a href="profile?user_id=<?php echo $_SESSION['user_id']; ?>" class="red-btn text-danger">
@@ -80,6 +80,19 @@
                       </a>
                   <?php endif; ?>
               </div>
+              
+              <!-- Profile Switcher (only show if user is logged in) -->
+              <?php 
+              if (isset($_SESSION['user_id'])) {
+                  // Initialize ProfileManager if not already done
+                  if (!isset($profileManager)) {
+                      require_once('assets/lib/ProfileManager.php');
+                      $profileManager = new ProfileManager($conn);
+                  }
+                  // Display profile switcher
+                  echo $profileManager->getProfileSwitcherHTML();
+              }
+              ?>
 
               <div class="dropdown dropdown_search">
                 <button class="search-btn " data-bs-toggle="dropdown" aria-expanded="true"><i

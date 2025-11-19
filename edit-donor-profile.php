@@ -1,17 +1,19 @@
 <?php
 session_start();
 include('assets/lib/openconn.php');
+require_once('assets/lib/ProfileManager.php');
 
-// Check if user is logged in
-if (!isset($_SESSION['user_id'])) {
-    $_SESSION['error'] = "Please login to edit your profile!";
-    header("Location: sign-in");
-    exit();
-}
+// =============== 1. INITIALIZE PROFILE MANAGER ===============
+$profileManager = new ProfileManager($conn);
 
+// =============== 2. REQUIRE LOGIN & DONOR ROLE ===============
+$profileManager->requireRole('donor', 'profile');
+
+// =============== 3. UPDATE LAST ACTIVITY ===============
+$profileManager->updateLastActivity();
+
+// =============== 4. FETCH DONOR DATA ===============
 $userId = $_SESSION['user_id'];
-
-// Fetch donor data
 $query = "SELECT * FROM donors WHERE user_id = ?";
 $stmt = $conn->prepare($query);
 $stmt->bind_param("s", $userId);
@@ -25,6 +27,7 @@ if ($result->num_rows === 0) {
 }
 
 $donor = $result->fetch_assoc();
+$stmt->close();
 
 // Handle form submission
 $error = '';

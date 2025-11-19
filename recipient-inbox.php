@@ -1,41 +1,18 @@
 <?php
 session_start();
 include('assets/lib/openconn.php');
+require_once('assets/lib/ProfileManager.php');
 
-// Check if user is logged in and is recipient
-if (!isset($_SESSION['user_id'])) {
-    header("Location: sign-in.php");
-    exit();
-}
+// =============== 1. INITIALIZE PROFILE MANAGER ===============
+$profileManager = new ProfileManager($conn);
+
+// =============== 2. REQUIRE LOGIN & RECIPIENT ROLE ===============
+$profileManager->requireRole('recipient', 'profile');
+
+// =============== 3. UPDATE LAST ACTIVITY ===============
+$profileManager->updateLastActivity();
 
 $recipient_id = $_SESSION['user_id'];
-
-// Set and maintain active profile as recipient
-$_SESSION['active_profile'] = 'recipient';
-
-// Update recipient status to active in database
-$conn->query("UPDATE recipients SET status = 'active' WHERE user_id = '$recipient_id'");
-// Deactivate donor profile if exists
-$conn->query("UPDATE donors SET status = 'inactive' WHERE user_id = '$recipient_id'");
-
-$is_recipient = false;
-
-// Verify recipient status
-$query = "SELECT is_recipient FROM users WHERE user_id = ?";
-$stmt = $conn->prepare($query);
-$stmt->bind_param("s", $recipient_id);
-$stmt->execute();
-$result = $stmt->get_result();
-
-if ($result->num_rows > 0) {
-    $user = $result->fetch_assoc();
-    $is_recipient = $user['is_recipient'] == 1;
-}
-
-if (!$is_recipient) {
-    header("Location: unauthorized.php");
-    exit();
-}
 
 // Get all conversations
 $query = "SELECT 

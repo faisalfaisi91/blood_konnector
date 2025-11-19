@@ -1,12 +1,16 @@
 <?php
 session_start();
 include('assets/lib/openconn.php');
+require_once('assets/lib/ProfileManager.php');
 
-// Verify donor login
-if (!isset($_SESSION['user_id']) || !is_donor($_SESSION['user_id'])) {
-    header("Location: sign-in");
-    exit();
-}
+// =============== 1. INITIALIZE PROFILE MANAGER ===============
+$profileManager = new ProfileManager($conn);
+
+// =============== 2. REQUIRE LOGIN & DONOR ROLE ===============
+$profileManager->requireRole('donor', 'profile');
+
+// =============== 3. UPDATE LAST ACTIVITY ===============
+$profileManager->updateLastActivity();
 
 $donor_id = $_SESSION['user_id'];
 

@@ -9,14 +9,18 @@ include("assets/lib/openconn.php");
 $alert_script = ""; // For storing SweetAlert script
 
 if (isset($_POST['btnSignIn'])) {
-    // Sanitize input
-    $email = mysqli_real_escape_string($conn, $_POST['email']);
-    $password = mysqli_real_escape_string($conn, $_POST['password']);
+    // Trim and sanitize input (remove spaces)
+    $email = trim($_POST['email']);
+    $password = $_POST['password'];
 
-    $query = "SELECT * FROM users WHERE email='$email'";
-    $result = mysqli_query($conn, $query);
+    // Use prepared statement for security and case-insensitive search
+    $query = "SELECT * FROM users WHERE LOWER(email) = LOWER(?)";
+    $stmt = $conn->prepare($query);
+    $stmt->bind_param("s", $email);
+    $stmt->execute();
+    $result = $stmt->get_result();
 
-    if (mysqli_num_rows($result) > 0) {
+    if ($result->num_rows > 0) {
         $user = mysqli_fetch_assoc($result);
         
         // Support both MD5 (legacy) and bcrypt password hashing
@@ -83,6 +87,11 @@ if (isset($_POST['btnSignIn'])) {
                 window.location.href = 'sign-up';
             });
         </script>";
+    }
+    
+    // Close statement if it exists
+    if (isset($stmt)) {
+        $stmt->close();
     }
 }
 ?>

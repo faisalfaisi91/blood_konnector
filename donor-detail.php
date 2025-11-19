@@ -1,48 +1,24 @@
 <?php
 session_start();
 include('assets/lib/openconn.php');
+require_once('assets/lib/ProfileManager.php');
 
-// =============== 1. AUTO-SYNC ACTIVE PROFILE ===============
-if (isset($_SESSION['user_id']) && isset($_SESSION['active_profile'])) {
-    $userId = $_SESSION['user_id'];
-    $mode = $_SESSION['active_profile'];
+// =============== 1. INITIALIZE PROFILE MANAGER (optional for guest viewing) ===============
+$profileManager = new ProfileManager($conn);
 
-    if ($mode === 'recipient') {
-        // Ensure recipient is active in DB
-        $conn->query("UPDATE recipients SET status = 'active' WHERE user_id = '$userId'");
-        $conn->query("UPDATE donors SET status = 'inactive' WHERE user_id = '$userId'");
-    }
-    if ($mode === 'donor') {
-        $conn->query("UPDATE donors SET status = 'active' WHERE user_id = '$userId'");
-        $conn->query("UPDATE recipients SET status = 'inactive' WHERE user_id = '$userId'");
-    }
-}
-
-// =============== 2. CHECK IF VIEWER IS ACTIVE RECIPIENT .===============
+// =============== 2. CHECK IF VIEWER IS AN ACTIVE RECIPIENT ===============
 $is_active_recipient = false;
 $has_recipient_profile = false;
 
-if (isset($_SESSION['user_id'])) {
-    $loggedId = $_SESSION['user_id'];
-
-    // Check session first
-    if (isset($_SESSION['active_profile']) && $_SESSION['active_profile'] === 'recipient') {
-        $is_active_recipient = true;
-    }
-
-    // Double-check with DB
-    $check = $conn->prepare("SELECT status FROM recipients WHERE user_id = ?");
-    $check->bind_param("s", $loggedId);
-    $check->execute();
-    $res = $check->get_result();
-    if ($res->num_rows > 0) {
-        $has_recipient_profile = true;
-        $db_status = $res->fetch_assoc()['status'];
-        if ($db_status === 'active') {
-            $is_active_recipient = true;
-        }
-    }
-    $check->close();
+if ($profileManager->isLoggedIn()) {
+    // Update last activity if logged in
+    $profileManager->updateLastActivity();
+    
+    // Check if user has recipient role
+    $has_recipient_profile = $profileManager->hasRole('recipient');
+    
+    // Check if currently viewing as recipient
+    $is_active_recipient = ($profileManager->getCurrentProfile() === 'recipient') && $has_recipient_profile;
 }
 ?>
 

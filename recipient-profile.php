@@ -1,25 +1,19 @@
 <?php
     session_start();
     include('assets/lib/openconn.php');
+    require_once('assets/lib/ProfileManager.php');
 
-    // Check if user is logged in
-    if (!isset($_SESSION['user_id'])) {
-        $_SESSION['error'] = "Please login to view this page!";
-        header("Location: sign-in.php");
-        exit();
-    }
+    // =============== 1. INITIALIZE PROFILE MANAGER ===============
+    $profileManager = new ProfileManager($conn);
 
+    // =============== 2. REQUIRE LOGIN & RECIPIENT ROLE ===============
+    $profileManager->requireRole('recipient', 'profile');
+
+    // =============== 3. UPDATE LAST ACTIVITY ===============
+    $profileManager->updateLastActivity();
+
+    // =============== 4. FETCH RECIPIENT DATA ===============
     $userId = $_SESSION['user_id'];
-    
-    // Set and maintain active profile as recipient
-    $_SESSION['active_profile'] = 'recipient';
-    
-    // Update recipient status to active in database
-    $conn->query("UPDATE recipients SET status = 'active' WHERE user_id = '$userId'");
-    // Deactivate donor profile if exists
-    $conn->query("UPDATE donors SET status = 'inactive' WHERE user_id = '$userId'");
-
-    // Fetch recipient data
     $query = "SELECT * FROM recipients WHERE user_id = ?";
     $stmt = $conn->prepare($query);
     $stmt->bind_param("s", $userId);
@@ -28,26 +22,15 @@
 
     if ($result->num_rows === 0) {
         $_SESSION['error'] = "Recipient profile not found!";
-        header("Location: register-as-recipients.php");
+        header("Location: register-as-recipients");
         exit();
     }
 
     $recipient = $result->fetch_assoc();
+    $stmt->close();
 
-    // Calculate online status
-    $onlineStatus = false;
-    $lastActivityQuery = "SELECT last_activity FROM users WHERE user_id = ?";
-    $stmt = $conn->prepare($lastActivityQuery);
-    $stmt->bind_param("s", $userId);
-    $stmt->execute();
-    $lastActivityResult = $stmt->get_result();
-
-    if ($lastActivityResult->num_rows > 0) {
-        $lastActivity = $lastActivityResult->fetch_assoc()['last_activity'];
-        $currentTime = time();
-        $lastActivityTime = strtotime($lastActivity);
-        $onlineStatus = ($currentTime - $lastActivityTime) < 300; // 5 minutes
-    }
+    // =============== 5. GET ONLINE STATUS ===============
+    $onlineStatus = $profileManager->isUserOnline();
 ?>
 
 <!DOCTYPE html>
