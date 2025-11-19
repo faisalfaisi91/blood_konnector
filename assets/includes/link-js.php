@@ -1,0 +1,12 @@
+  <script src="assets/js/jquery.min.js"></script>
+  <script src="assets/js/popper.min.js"></script>
+  <script src="assets/js/bootstrap.min.js"></script>
+  <script src="assets/js/wow.js"></script>
+  <script src="assets/js/slick.js"></script>
+  <script src="assets/js/fancybox.js"></script>
+  <script src="assets/js/counterup.min.js"></script>
+  <script src="assets/js/progress-bar.js"></script>
+  <script src="assets/js/smooth-scroll.min.js"></script>
+  <script src="assets/js/nice-select.js"></script>
+  <script src="assets/js/waypoints.js"></script>
+  <script src="assets/js/script.js"></script>
