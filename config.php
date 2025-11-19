@@ -54,5 +54,3 @@ try {
 } catch (Exception $e) {
     die('Configuration Error: ' . $e->getMessage());
 }
-?>
-

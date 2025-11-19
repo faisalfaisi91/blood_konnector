@@ -405,4 +405,3 @@ if (!function_exists('is_recipient')) {
         return $is_recipient;
     }
 }
-
