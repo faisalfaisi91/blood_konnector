@@ -4,6 +4,8 @@ use PHPMailer\PHPMailer\PHPMailer;
 use PHPMailer\PHPMailer\Exception;
 
 require 'vendor/autoload.php';
+require_once 'config.php';
+require_once 'assets/lib/email-helper.php';
 session_start();
 include("assets/lib/openconn.php");
 
@@ -66,75 +68,7 @@ if (isset($_POST['btnSignUp'])) {
     }
 }
 
-/**
- * Function to send a styled verification email
- */
-function sendVerificationEmail($email, $first_name, $verification_code) {
-    $mail = new PHPMailer(true);
-
-    try {
-        // SMTP Configuration
-        $mail->isSMTP();
-        $mail->Host       = 's26.hosterpk.com';
-        $mail->SMTPAuth   = true;
-        $mail->Username   = 'info@bloodkonnector.com';
-        $mail->Password   = 'Nokia#001Nokia#001';
-        $mail->SMTPSecure = PHPMailer::ENCRYPTION_SMTPS;
-        $mail->Port       = 465;
-        $mail->CharSet    = 'UTF-8';
-        $mail->SMTPOptions = [
-            'ssl' => [
-                'verify_peer'       => true,
-                'verify_peer_name'  => true,
-                'allow_self_signed' => false
-            ]
-        ];
-
-        // Recipients
-        $mail->setFrom('noreply@bloodkonnector.com', 'Blood Connector');
-        $mail->addAddress($email, $first_name);
-
-        // Email Subject
-        $mail->Subject = 'Verify Your Email - Blood Connector Registration';
-
-        // Verification link
-        $verification_link = 'https://bloodkonnector.com/verify-email?code=' . $verification_code;
-
-        // HTML Email Body (cleaner & more readable)
-        $mail->isHTML(true);
-        $mail->Body = "
-        <div style='font-family: Arial, sans-serif; max-width:600px; margin:20px auto; border:1px solid #eee; border-radius:8px; overflow:hidden; box-shadow:0 0 8px rgba(0,0,0,0.05);'>
-            <div style='background-color:#EA062B; color:white; padding:20px; text-align:center;'>
-                <h2>Welcome to Blood Connector</h2>
-            </div>
-            <div style='padding:20px; color:#333;'>
-                <p>Hi <strong>$first_name</strong>,</p>
-                <p>Thank you for signing up at <strong>Blood Connector</strong>. To complete your registration, please verify your email address by clicking the button below:</p>
-                <p style='text-align:center; margin:30px 0;'>
-                    <a href='$verification_link' style='background-color:#EA062B; color:#fff; padding:12px 25px; border-radius:6px; text-decoration:none; font-weight:bold; display:inline-block;'>
-                        Verify My Email
-                    </a>
-                </p>
-                <p>If the button doesn’t work, copy and paste this link into your browser:</p>
-                <p style='word-wrap:break-word;'><a href='$verification_link' style='color:#EA062B;'>$verification_link</a></p>
-                <hr style='border:none; border-top:1px solid #eee; margin:30px 0;'>
-                <p style='font-size:13px; color:#666;'>If you didn’t create this account, please ignore this email.</p>
-                <p style='font-size:13px; color:#666;'>Regards,<br><strong>The Blood Connector Team</strong></p>
-            </div>
-        </div>";
-
-        // Plain text version
-        $mail->AltBody = "Hi $first_name,\n\nThank you for signing up at Blood Connector. 
-Please verify your email using the following link:\n$verification_link\n\nIf you didn’t create this account, please ignore this message.\n\n- The Blood Connector Team";
-
-        // Send email
-        $mail->send();
-        return true;
-    } catch (Exception $e) {
-        error_log("Email sending failed for $email: " . $mail->ErrorInfo);
-        return false;
-    }
-}
+// sendVerificationEmail() function moved to assets/lib/email-helper.php
 ?>
 
 <!DOCTYPE html>

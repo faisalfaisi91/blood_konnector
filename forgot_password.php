@@ -1,5 +1,7 @@
 <?php
 session_start();
+require_once 'config.php';
+require_once 'assets/lib/email-helper.php';
 include('assets/lib/openconn.php');
 
 // Load PHPMailer
@@ -40,7 +42,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                 $stmt->bind_param("sss", $reset_token, $expires_at, $user_id);
                 if ($stmt->execute()) {
                     // Send reset email
-                    $email_sent = sendResetEmail($email, $first_name, $reset_token);
+                    $email_sent = sendPasswordResetEmail($email, $first_name, $reset_token);
                     if ($email_sent) {
                         $alert_message = "A password reset link has been sent to your email.";
                         $alert_type = "success";
@@ -58,56 +60,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
     }
 }
 
-// Function to send reset password email
-function sendResetEmail($email, $first_name, $reset_token) {
-    $mail = new PHPMailer(true);
-    try {
-        $mail->isSMTP();
-        $mail->Host = 's26.hosterpk.com';
-        $mail->SMTPAuth = true;
-        $mail->Username = 'info@bloodkonnector.com';
-        $mail->Password = 'Nokia#001Nokia#001';
-        $mail->SMTPSecure = PHPMailer::ENCRYPTION_SMTPS;
-        $mail->Port = 465;
-        $mail->SMTPOptions = [
-            'ssl' => [
-                'verify_peer' => true,
-                'verify_peer_name' => true,
-                'allow_self_signed' => false
-            ]
-        ];
-
-        $mail->setFrom('noreply@bloodkonnector.com', 'Blood Connector');
-        $mail->addAddress($email, $first_name);
-        $mail->isHTML(true);
-        $mail->Subject = 'Password Reset Request for Blood Connector';
-
-        $reset_link = 'https://bloodkonnector.com/reset_password.php?token=' . $reset_token;
-        $mail->Body = "
-            <div style='font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;'>
-                <h2 style='color: #EA062B;'>Password Reset Request</h2>
-                <p>Dear $first_name,</p>
-                <p>We received a request to reset your password. Click the button below to reset it:</p>
-                <p style='text-align: center; margin: 30px 0;'>
-                    <a href='$reset_link' style='background-color: #EA062B; color: white; padding: 12px 24px; text-decoration: none; border-radius: 4px; font-weight: bold;'>
-                        Reset Password
-                    </a>
-                </p>
-                <p>If the button doesn't work, copy and paste this link into your browser:</p>
-                <p><a href='$reset_link'>$reset_link</a></p>
-                <p>This link will expire in 1 hour. If you didn't request a password reset, please ignore this email.</p>
-                <p>Best regards,<br>The Blood Connector Team</p>
-            </div>
-        ";
-        $mail->AltBody = "Dear $first_name,\n\nWe received a request to reset your password. Please visit this link to reset it:\n$reset_link\n\nThis link will expire in 1 hour. If you didn't request a password reset, please ignore this email.\n\nBest regards,\nThe Blood Connector Team";
-
-        $mail->send();
-        return true;
-    } catch (Exception $e) {
-        error_log("Reset email sending error for $email: " . $e->getMessage());
-        return false;
-    }
-}
+// sendPasswordResetEmail() function moved to assets/lib/email-helper.php
 ?>
 
 <!DOCTYPE html>
