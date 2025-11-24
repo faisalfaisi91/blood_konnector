@@ -201,3 +201,75 @@ if (window.innerWidth <= 768) {
     });
 }
 
+/**
+ * Switch profile for mobile menu
+ * @param {string} profile - 'donor' or 'recipient'
+ */
+function switchProfileMobile(profile) {
+    console.log('switchProfileMobile called with profile:', profile);
+    
+    // Show loading state
+    const buttons = document.querySelectorAll('.mobile-profile-switcher button');
+    buttons.forEach(btn => {
+        btn.disabled = true;
+        btn.style.opacity = '0.6';
+    });
+    
+    // Get the base URL from current location
+    const currentPath = window.location.pathname;
+    const pathSegments = currentPath.split('/').filter(part => part);
+    
+    // Find the project root (blood_konnector)
+    let baseUrl = window.location.origin;
+    if (pathSegments.length > 0 && pathSegments[0] === 'blood_konnector') {
+        baseUrl += '/blood_konnector';
+    }
+    
+    const ajaxUrl = baseUrl + '/assets/lib/switch-profile.php';
+    
+    console.log('Making AJAX request to:', ajaxUrl);
+    
+    // Make AJAX request
+    fetch(ajaxUrl, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/x-www-form-urlencoded',
+        },
+        body: 'profile=' + encodeURIComponent(profile)
+    })
+    .then(response => {
+        console.log('Response status:', response.status);
+        if (!response.ok) {
+            throw new Error('Network response was not ok: ' + response.status);
+        }
+        return response.json();
+    })
+    .then(data => {
+        console.log('Response data:', data);
+        if (data.success) {
+            console.log('Profile switch successful, reloading page...');
+            // Success! Reload the page to reflect changes
+            window.location.reload();
+        } else {
+            // Show error message
+            console.error('Profile switch failed:', data.message);
+            alert(data.message || 'Failed to switch profile. Please try again.');
+            
+            // Re-enable buttons
+            buttons.forEach(btn => {
+                btn.disabled = false;
+                btn.style.opacity = '1';
+            });
+        }
+    })
+    .catch(error => {
+        console.error('Error switching profile:', error);
+        alert('An error occurred: ' + error.message + '. Please try again.');
+        
+        // Re-enable buttons
+        buttons.forEach(btn => {
+            btn.disabled = false;
+            btn.style.opacity = '1';
+        });
+    });
+}

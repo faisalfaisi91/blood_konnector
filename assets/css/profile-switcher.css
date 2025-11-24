@@ -325,3 +325,110 @@
     outline-offset: -2px;
 }
 
+/* Mobile Profile Switcher Styles */
+.mobile-profile-switcher {
+    padding: 10px;
+    background-color: #f8f9fa;
+    border-radius: 8px;
+}
+
+.mobile-profile-switcher strong {
+    font-size: 14px;
+    color: #333;
+    display: block;
+    margin-bottom: 12px;
+    font-weight: 600;
+}
+
+.mobile-profile-switcher .btn {
+    border-radius: 6px;
+    font-size: 14px;
+    font-weight: 500;
+    transition: all 0.3s ease;
+    border: 2px solid #EA062B !important;
+}
+
+/* Active profile button (red background, white text) */
+.mobile-profile-switcher .btn-danger {
+    background-color: #EA062B !important;
+    color: white !important;
+    border-color: #EA062B !important;
+}
+
+.mobile-profile-switcher .btn-danger i {
+    color: white !important;
+}
+
+.mobile-profile-switcher .btn-danger span {
+    color: white !important;
+}
+
+.mobile-profile-switcher .btn-danger:hover {
+    background-color: #c5051f !important;
+    border-color: #c5051f !important;
+}
+
+/* Inactive profile button (white background, red text) */
+.mobile-profile-switcher .btn-outline-danger {
+    background-color: white !important;
+    color: #EA062B !important;
+    border-color: #EA062B !important;
+}
+
+.mobile-profile-switcher .btn-outline-danger i {
+    color: #EA062B !important;
+}
+
+.mobile-profile-switcher .btn-outline-danger span {
+    color: #EA062B !important;
+}
+
+.mobile-profile-switcher .btn-outline-danger:hover {
+    background-color: #EA062B !important;
+    color: white !important;
+}
+
+.mobile-profile-switcher .btn-outline-danger:hover i,
+.mobile-profile-switcher .btn-outline-danger:hover span {
+    color: white !important;
+}
+
+.mobile-profile-switcher .btn:disabled {
+    cursor: not-allowed;
+}
+
+.mobile-profile-switcher .btn i {
+    font-size: 16px;
+}
+
+/* Checkmark icon for active profile */
+.mobile-profile-switcher .btn-danger .fa-check {
+    color: white !important;
+}
+
+/* Mobile menu accordion adjustments */
+.mobile_dropdown .accordion-item .mobile-profile-switcher {
+    margin: 0;
+    padding: 10px 20px;
+}
+
+.mobile_dropdown .accordion-item.profile-switcher-item {
+    border: none;
+    padding: 0;
+}
+
+.mobile_dropdown .accordion-item h2 {
+    border: none;
+}
+
+/* Prevent any link behavior on profile switcher buttons */
+.mobile-profile-btn {
+    cursor: pointer !important;
+    text-decoration: none !important;
+}
+
+.mobile-profile-btn:focus {
+    outline: 2px solid #EA062B;
+    outline-offset: 2px;
+}
+

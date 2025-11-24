@@ -160,6 +160,64 @@
                 <?php endif; ?>
             </h2>
           </li>
+          
+          <!-- Profile Switcher in Mobile Menu (only show if user is logged in) -->
+          <?php if (isset($_SESSION['user_id'])): ?>
+          <li class="accordion-item profile-switcher-item">
+            <div class="mobile-profile-switcher">
+              <?php 
+              // Initialize ProfileManager if not already done
+              if (!isset($profileManager)) {
+                  require_once('assets/lib/ProfileManager.php');
+                  $profileManager = new ProfileManager($conn);
+              }
+              // Get user roles
+              $roles = $profileManager->getUserRoles($_SESSION['user_id']);
+              $currentProfile = $profileManager->getCurrentProfile();
+              
+              // Only show switcher if user has both roles
+              if ($roles['is_donor'] && $roles['is_recipient']): 
+              ?>
+                <div style="padding: 15px 0;">
+                  <strong style="display: block; margin-bottom: 12px; color: #333; font-size: 16px;">Switch Profile:</strong>
+                  <div class="d-flex flex-column gap-2">
+                    <button type="button" 
+                            onclick="event.preventDefault(); event.stopPropagation(); switchProfileMobile('donor'); return false;" 
+                            class="btn btn-sm mobile-profile-btn <?php echo $currentProfile === 'donor' ? 'btn-danger' : 'btn-outline-danger'; ?>" 
+                            style="width: 100%; text-align: left; padding: 12px 15px;">
+                      <i class="fa-solid fa-droplet me-2"></i>
+                      <span>Donor Profile</span>
+                      <?php if ($currentProfile === 'donor'): ?>
+                        <i class="fa-solid fa-check float-end mt-1"></i>
+                      <?php endif; ?>
+                    </button>
+                    <button type="button" 
+                            onclick="event.preventDefault(); event.stopPropagation(); switchProfileMobile('recipient'); return false;" 
+                            class="btn btn-sm mobile-profile-btn <?php echo $currentProfile === 'recipient' ? 'btn-danger' : 'btn-outline-danger'; ?>" 
+                            style="width: 100%; text-align: left; padding: 12px 15px;">
+                      <i class="fa-solid fa-hand-holding-heart me-2"></i>
+                      <span>Recipient Profile</span>
+                      <?php if ($currentProfile === 'recipient'): ?>
+                        <i class="fa-solid fa-check float-end mt-1"></i>
+                      <?php endif; ?>
+                    </button>
+                  </div>
+                </div>
+              <?php elseif ($roles['is_donor']): ?>
+                <div style="padding: 15px 0; color: #666;">
+                  <i class="fa-solid fa-droplet me-2"></i>
+                  <span>Donor Profile</span>
+                </div>
+              <?php elseif ($roles['is_recipient']): ?>
+                <div style="padding: 15px 0; color: #666;">
+                  <i class="fa-solid fa-hand-holding-heart me-2"></i>
+                  <span>Recipient Profile</span>
+                </div>
+              <?php endif; ?>
+            </div>
+          </li>
+          <?php endif; ?>
+          
           <li class="accordion-item">
             <h2><a href="contact">Contact</a></h2>
           </li>
