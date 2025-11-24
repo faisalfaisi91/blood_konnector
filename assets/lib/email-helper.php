@@ -74,30 +74,33 @@ function sendVerificationEmail($email, $first_name, $verification_code) {
         
         // HTML Email Body
         $mail->isHTML(true);
-        $mail->Body = "
-        <div style='font-family: Arial, sans-serif; max-width:600px; margin:20px auto; border:1px solid #eee; border-radius:8px; overflow:hidden; box-shadow:0 0 8px rgba(0,0,0,0.05);'>
-            <div style='background-color:#EA062B; color:white; padding:20px; text-align:center;'>
-                <h2>Welcome to Blood Connector</h2>
+        $mail->Body = '
+        <div style="font-family: Arial, sans-serif; max-width:600px; margin:20px auto; border:1px solid #eee; border-radius:8px; overflow:hidden; box-shadow:0 0 8px rgba(0,0,0,0.05);">
+            <div style="background-color:#EA062B; color:white; padding:20px; text-align:center;">
+                <h2 style="margin:0; color:white;">Welcome to Blood Connector</h2>
             </div>
-            <div style='padding:20px; color:#333;'>
-                <p>Hi <strong>$first_name</strong>,</p>
-                <p>Thank you for signing up at <strong>Blood Connector</strong>. To complete your registration, please verify your email address by clicking the button below:</p>
-                <p style='text-align:center; margin:30px 0;'>
-                    <a href='$verification_link' style='background-color:#EA062B; color:#fff; padding:12px 25px; border-radius:6px; text-decoration:none; font-weight:bold; display:inline-block;'>
-                        Verify My Email
-                    </a>
-                </p>
-                <p>If the button doesn't work, copy and paste this link into your browser:</p>
-                <p style='word-wrap:break-word;'><a href='$verification_link' style='color:#EA062B;'>$verification_link</a></p>
-                <hr style='border:none; border-top:1px solid #eee; margin:30px 0;'>
-                <p style='font-size:13px; color:#666;'>If you didn't create this account, please ignore this email.</p>
-                <p style='font-size:13px; color:#666;'>Regards,<br><strong>The Blood Connector Team</strong></p>
+            <div style="padding:20px; color:#333;">
+                <p style="margin:10px 0;">Hi <strong>' . htmlspecialchars($first_name) . '</strong>,</p>
+                <p style="margin:10px 0;">Thank you for signing up at <strong>Blood Connector</strong>. To complete your registration, please verify your email address by clicking the button below:</p>
+                <table width="100%" cellpadding="0" cellspacing="0" style="margin:30px 0;">
+                    <tr>
+                        <td align="center">
+                            <a href="' . $verification_link . '" target="_blank" style="background-color:#EA062B; color:#ffffff; padding:14px 28px; border-radius:6px; text-decoration:none; font-weight:bold; display:inline-block; font-size:16px;">
+                                Verify My Email
+                            </a>
+                        </td>
+                    </tr>
+                </table>
+                <p style="margin:10px 0;">If the button doesn\'t work, copy and paste this link into your browser:</p>
+                <p style="word-wrap:break-word; margin:10px 0;"><a href="' . $verification_link . '" target="_blank" style="color:#EA062B;">' . $verification_link . '</a></p>
+                <hr style="border:none; border-top:1px solid #eee; margin:30px 0;">
+                <p style="font-size:13px; color:#666; margin:10px 0;">If you didn\'t create this account, please ignore this email.</p>
+                <p style="font-size:13px; color:#666; margin:10px 0;">Regards,<br><strong>The Blood Connector Team</strong></p>
             </div>
-        </div>";
+        </div>';
         
         // Plain text version
-        $mail->AltBody = "Hi $first_name,\n\nThank you for signing up at Blood Connector. 
-Please verify your email using the following link:\n$verification_link\n\nIf you didn't create this account, please ignore this message.\n\n- The Blood Connector Team";
+        $mail->AltBody = "Hi " . $first_name . ",\n\nThank you for signing up at Blood Connector.\n\nPlease verify your email using the following link:\n" . $verification_link . "\n\nIf you didn't create this account, please ignore this message.\n\nRegards,\nThe Blood Connector Team";
         
         // Send email
         $mail->send();
@@ -133,29 +136,31 @@ function sendPasswordResetEmail($email, $first_name, $reset_token) {
         
         // HTML Email Body
         $mail->isHTML(true);
-        $mail->Body = "
-        <div style='font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;'>
-            <h2 style='color: #EA062B;'>Password Reset Request</h2>
-            <p>Dear $first_name,</p>
-            <p>We received a request to reset your password. Click the button below to reset it:</p>
-            <p style='text-align: center; margin: 30px 0;'>
-                <a href='$reset_link' style='background-color: #EA062B; color: white; padding: 12px 24px; text-decoration: none; border-radius: 4px; font-weight: bold;'>
-                    Reset Password
-                </a>
-            </p>
-            <p>If the button doesn't work, copy and paste this link into your browser:</p>
-            <p><a href='$reset_link'>$reset_link</a></p>
-            <p>This link will expire in 1 hour. If you didn't request a password reset, please ignore this email.</p>
-            <p style='margin-top: 30px; color: #666; font-size: 12px;'>
+        $mail->Body = '
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
+            <h2 style="color: #EA062B; margin-bottom: 20px;">Password Reset Request</h2>
+            <p style="margin:10px 0;">Dear <strong>' . htmlspecialchars($first_name) . '</strong>,</p>
+            <p style="margin:10px 0;">We received a request to reset your password. Click the button below to reset it:</p>
+            <table width="100%" cellpadding="0" cellspacing="0" style="margin:30px 0;">
+                <tr>
+                    <td align="center">
+                        <a href="' . $reset_link . '" target="_blank" style="background-color: #EA062B; color: #ffffff; padding: 14px 28px; text-decoration: none; border-radius: 4px; font-weight: bold; display:inline-block; font-size:16px;">
+                            Reset Password
+                        </a>
+                    </td>
+                </tr>
+            </table>
+            <p style="margin:10px 0;">If the button doesn\'t work, copy and paste this link into your browser:</p>
+            <p style="margin:10px 0;"><a href="' . $reset_link . '" target="_blank" style="color:#EA062B; word-wrap:break-word;">' . $reset_link . '</a></p>
+            <p style="margin:10px 0;">This link will expire in 1 hour. If you didn\'t request a password reset, please ignore this email.</p>
+            <p style="margin-top: 30px; color: #666; font-size: 12px;">
                 Best regards,<br>
                 <strong>The Blood Connector Team</strong>
             </p>
-        </div>";
+        </div>';
         
         // Plain text version
-        $mail->AltBody = "Dear $first_name,\n\nWe received a request to reset your password. 
-Click or copy this link to reset it:\n$reset_link\n\nThis link will expire in 1 hour. 
-If you didn't request a password reset, please ignore this email.\n\nBest regards,\nThe Blood Connector Team";
+        $mail->AltBody = "Dear " . $first_name . ",\n\nWe received a request to reset your password.\n\nClick or copy this link to reset it:\n" . $reset_link . "\n\nThis link will expire in 1 hour. If you didn't request a password reset, please ignore this email.\n\nBest regards,\nThe Blood Connector Team";
         
         // Send email
         $mail->send();
