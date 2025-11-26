@@ -65,8 +65,8 @@ try {
         exit;
     }
     
-    // Switch profile in session
-    $_SESSION['active_profile'] = $requestedProfile;
+    // Switch profile in session using ProfileManager method (same as desktop)
+    $profileManager->setViewingProfile($requestedProfile);
     
     // Update last activity
     $profileManager->updateLastActivity();

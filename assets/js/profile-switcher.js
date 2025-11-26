@@ -206,7 +206,6 @@ if (window.innerWidth <= 768) {
  * @param {string} profile - 'donor' or 'recipient'
  */
 function switchProfileMobile(profile) {
-    console.log('switchProfileMobile called with profile:', profile);
     
     // Show loading state
     const buttons = document.querySelectorAll('.mobile-profile-switcher button');
@@ -227,8 +226,6 @@ function switchProfileMobile(profile) {
     
     const ajaxUrl = baseUrl + '/assets/lib/switch-profile.php';
     
-    console.log('Making AJAX request to:', ajaxUrl);
-    
     // Make AJAX request
     fetch(ajaxUrl, {
         method: 'POST',
@@ -238,18 +235,15 @@ function switchProfileMobile(profile) {
         body: 'profile=' + encodeURIComponent(profile)
     })
     .then(response => {
-        console.log('Response status:', response.status);
         if (!response.ok) {
             throw new Error('Network response was not ok: ' + response.status);
         }
         return response.json();
     })
     .then(data => {
-        console.log('Response data:', data);
         if (data.success) {
-            console.log('Profile switch successful, reloading page...');
-            // Success! Reload the page to reflect changes
-            window.location.reload();
+            const profilePage = profile === 'donor' ? 'donor-profile' : 'recipient-profile';
+            window.location.href = baseUrl + '/' + profilePage;
         } else {
             // Show error message
             console.error('Profile switch failed:', data.message);
@@ -263,7 +257,6 @@ function switchProfileMobile(profile) {
         }
     })
     .catch(error => {
-        console.error('Error switching profile:', error);
         alert('An error occurred: ' + error.message + '. Please try again.');
         
         // Re-enable buttons

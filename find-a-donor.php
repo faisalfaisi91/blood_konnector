@@ -2,19 +2,11 @@
   session_start();
   include('assets/lib/openconn.php');
 
+  // Update last activity if user is logged in
   if (isset($_SESSION['user_id'])) {
-      $userId = $_SESSION['user_id'];
-      $currentTime = date('Y-m-d H:i:s'); // Current timestamp
-      $updateQuery = "UPDATE users SET last_activity = ? WHERE user_id = ?";
-      $stmt = $conn->prepare($updateQuery);
-      $stmt->bind_param("si", $currentTime, $userId);
-      $stmt->execute();
-      
-      // Maintain active profile if set (for recipients searching for donors)
-      if (isset($_SESSION['active_profile']) && $_SESSION['active_profile'] === 'recipient') {
-          $conn->query("UPDATE recipients SET status = 'active' WHERE user_id = '$userId'");
-          $conn->query("UPDATE donors SET status = 'inactive' WHERE user_id = '$userId'");
-      }
+      require_once('assets/lib/ProfileManager.php');
+      $profileManager = new ProfileManager($conn);
+      $profileManager->updateLastActivity();
   }
 
 ?>
