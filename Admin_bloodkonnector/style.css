@@ -95,10 +95,23 @@ tr:hover td {
   box-shadow: 0 0 0 3px rgba(225, 29, 72, 0.1);
 }
 
+/* Tabs Container */
+.flex.space-x-1.border-b {
+  position: relative;
+  z-index: 10;
+}
+
 /* Tabs */
 .tab-button {
   transition: all 0.2s;
   position: relative;
+  cursor: pointer;
+  border: none;
+  background: transparent;
+  z-index: 11;
+  pointer-events: auto !important;
+  user-select: none;
+  -webkit-user-select: none;
 }
 
 .tab-button:after {
@@ -111,6 +124,13 @@ tr:hover td {
   background-color: var(--primary);
   transform: scaleX(0);
   transition: transform 0.2s;
+  pointer-events: none;
+  z-index: -1;
+}
+
+.tab-button:hover {
+  color: var(--primary);
+  background-color: rgba(225, 29, 72, 0.05);
 }
 
 .tab-button.active {
@@ -119,6 +139,16 @@ tr:hover td {
 
 .tab-button.active:after {
   transform: scaleX(1);
+}
+
+.tab-button:focus {
+  outline: 2px solid var(--primary);
+  outline-offset: -2px;
+}
+
+.tab-button i,
+.tab-button svg {
+  pointer-events: none;
 }
 
 /* Loading state */
@@ -150,6 +180,30 @@ tr:hover td {
   }
 }
 
+/* Tab Content */
+.tab-content {
+  position: relative;
+  z-index: 1;
+}
+
+.tab-content.hidden {
+  display: none !important;
+}
+
+/* Notifications */
+.notification {
+  opacity: 0;
+  transform: translateX(100%);
+  min-width: 300px;
+  max-width: 500px;
+  z-index: 9999;
+}
+
+.notification i {
+  font-size: 1.25rem;
+}
+
+/* Responsive adjustments */
 @media (max-width: 640px) {
   .dashboard-cards {
     grid-template-columns: 1fr;
@@ -161,5 +215,12 @@ tr:hover td {
   
   th, td {
     padding: 0.5rem;
+  }
+  
+  .notification {
+    min-width: 250px;
+    max-width: 90%;
+    right: 1rem;
+    left: 1rem;
   }
 }

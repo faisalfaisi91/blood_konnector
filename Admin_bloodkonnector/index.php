@@ -118,28 +118,31 @@ if ($recipient_result = $conn->query($recipient_query)) {
             </div>
 
             <!-- Tabs -->
-            <div class="mb-6">
-                <div class="flex space-x-1 border-b border-gray-200">
-                    <button class="tab-button px-4 py-3 font-medium text-sm uppercase tracking-wider active" data-tab="users">
+            <div class="mb-6" style="position: relative; z-index: 10;">
+                <div class="flex space-x-1 border-b border-gray-200" style="position: relative; z-index: 10;">
+                    <button type="button" class="tab-button px-4 py-3 font-medium text-sm uppercase tracking-wider active" data-tab="users" style="cursor: pointer; position: relative; z-index: 10;">
                         <i class="fas fa-user-friends mr-2"></i> Users
                     </button>
-                    <button class="tab-button px-4 py-3 font-medium text-sm uppercase tracking-wider" data-tab="donors">
+                    <button type="button" class="tab-button px-4 py-3 font-medium text-sm uppercase tracking-wider" data-tab="donors" style="cursor: pointer; position: relative; z-index: 10;">
                         <i class="fas fa-hand-holding-medical mr-2"></i> Donors
                     </button>
-                    <button class="tab-button px-4 py-3 font-medium text-sm uppercase tracking-wider" data-tab="recipients">
+                    <button type="button" class="tab-button px-4 py-3 font-medium text-sm uppercase tracking-wider" data-tab="recipients" style="cursor: pointer; position: relative; z-index: 10;">
                         <i class="fas fa-procedures mr-2"></i> Recipients
                     </button>
-                    <button class="tab-button px-4 py-3 font-medium text-sm uppercase tracking-wider" data-tab="requests">
+                    <button type="button" class="tab-button px-4 py-3 font-medium text-sm uppercase tracking-wider" data-tab="requests" style="cursor: pointer; position: relative; z-index: 10;">
                         <i class="fas fa-tint mr-2"></i> Blood Requests
                     </button>
-                    <button class="tab-button px-4 py-3 font-medium text-sm uppercase tracking-wider" data-tab="history">
+                    <button type="button" class="tab-button px-4 py-3 font-medium text-sm uppercase tracking-wider" data-tab="history" style="cursor: pointer; position: relative; z-index: 10;">
                         <i class="fas fa-history mr-2"></i> Donation History
+                    </button>
+                    <button type="button" class="tab-button px-4 py-3 font-medium text-sm uppercase tracking-wider" data-tab="settings" style="cursor: pointer; position: relative; z-index: 10;">
+                        <i class="fas fa-cog mr-2"></i> Settings
                     </button>
                 </div>
             </div>
 
             <!-- Tab Content -->
-            <div id="users" class="tab-content">
+            <div id="users" class="tab-content" style="display: block;">
                 <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-4">
                     <h2 class="text-xl font-semibold mb-2 sm:mb-0">User Management</h2>
                     <div class="relative w-full sm:w-64">
@@ -432,6 +435,74 @@ if ($recipient_result = $conn->query($recipient_query)) {
                             ?>
                         </tbody>
                     </table>
+                </div>
+            </div>
+
+            <!-- Settings Tab -->
+            <div id="settings" class="tab-content hidden">
+                <div class="mb-6">
+                    <h2 class="text-xl font-semibold mb-2">System Settings</h2>
+                    <p class="text-gray-600 text-sm">Manage system configuration and preferences</p>
+                </div>
+
+                <?php
+                // Fetch current settings
+                $tutorial_video = '#';
+                $settings_query = "SELECT setting_value FROM settings WHERE setting_key = 'donor_tutorial_video' LIMIT 1";
+                if ($settings_result = $conn->query($settings_query)) {
+                    if ($settings_result->num_rows > 0) {
+                        $tutorial_video = $settings_result->fetch_assoc()['setting_value'];
+                    }
+                }
+                ?>
+
+                <div class="card p-6">
+                    <form id="settingsForm" method="POST" action="save-settings.php">
+                        <div class="mb-6">
+                            <h3 class="text-lg font-semibold mb-4 text-gray-800">
+                                <i class="fas fa-video mr-2 text-red-600"></i>Donor Registration Tutorial
+                            </h3>
+                            
+                            <div class="mb-4">
+                                <label for="tutorial_video" class="block text-sm font-medium text-gray-700 mb-2">
+                                    YouTube Video Link
+                                </label>
+                                <input type="url" 
+                                       id="tutorial_video" 
+                                       name="tutorial_video" 
+                                       value="<?php echo htmlspecialchars($tutorial_video); ?>"
+                                       placeholder="https://www.youtube.com/watch?v=..." 
+                                       class="w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent">
+                                <p class="mt-2 text-sm text-gray-500">
+                                    <i class="fas fa-info-circle mr-1"></i>
+                                    Enter the full YouTube video URL. This link will appear as a "Tutorial" button on the donor registration form.
+                                </p>
+                            </div>
+
+                            <div class="flex items-center justify-between pt-4 border-t border-gray-200">
+                                <div>
+                                    <p class="text-sm text-gray-600">
+                                        <i class="fas fa-lightbulb mr-1 text-yellow-500"></i>
+                                        <strong>Tip:</strong> You can use any YouTube video URL format (watch?v= or youtu.be/)
+                                    </p>
+                                </div>
+                                <button type="submit" 
+                                        class="bg-red-600 hover:bg-red-700 text-white font-medium py-2 px-6 rounded-md transition-colors duration-200 flex items-center">
+                                    <i class="fas fa-save mr-2"></i>Save Settings
+                                </button>
+                            </div>
+                        </div>
+                    </form>
+                </div>
+
+                <!-- Additional Settings Section (for future expansion) -->
+                <div class="card p-6 mt-6">
+                    <h3 class="text-lg font-semibold mb-4 text-gray-800">
+                        <i class="fas fa-cog mr-2 text-red-600"></i>Other Settings
+                    </h3>
+                    <p class="text-gray-600 text-sm">
+                        More settings will be available here in future updates.
+                    </p>
                 </div>
             </div>
         </main>

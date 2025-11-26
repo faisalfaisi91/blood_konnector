@@ -42,32 +42,56 @@
         exit();
     }
     
+    // Fetch tutorial video link from settings (if table exists)
+    $tutorial_video_link = '#';
+    try {
+        $settings_query = "SELECT setting_value FROM settings WHERE setting_key = 'donor_tutorial_video' LIMIT 1";
+        $settings_result = $conn->query($settings_query);
+        if ($settings_result && $settings_result->num_rows > 0) {
+            $setting_row = $settings_result->fetch_assoc();
+            $tutorial_video_link = $setting_row['setting_value'] ?? '#';
+        }
+    } catch (Exception $e) {
+        // Settings table doesn't exist yet, use default
+        $tutorial_video_link = '#';
+    }
+    
     // Handle Form Submission (NEW CODE)
     $alert_script = ''; // For SweetAlert
     if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         // Sanitize and get inputs
-        $first_name = mysqli_real_escape_string($conn, $_POST['first_name']);
-        $last_name = mysqli_real_escape_string($conn, $_POST['last_name']);
-        $age = (int)$_POST['age'];
-        $gender = mysqli_real_escape_string($conn, $_POST['gender']);
-        $email = mysqli_real_escape_string($conn, $_POST['email']);
-        $contact_number = mysqli_real_escape_string($conn, $_POST['contact_number']);
+        $full_name = mysqli_real_escape_string($conn, $_POST['full_name'] ?? '');
+        $first_name = mysqli_real_escape_string($conn, $_POST['first_name'] ?? '');
+        $last_name = mysqli_real_escape_string($conn, $_POST['last_name'] ?? '');
+        $father_name = mysqli_real_escape_string($conn, $_POST['father_name'] ?? '');
+        $age = (int)($_POST['age'] ?? 0);
+        $gender = mysqli_real_escape_string($conn, $_POST['gender'] ?? '');
+        $email = mysqli_real_escape_string($conn, $_POST['email'] ?? '');
+        $contact_number = mysqli_real_escape_string($conn, $_POST['contact_number'] ?? '');
         $whatsapp_number = mysqli_real_escape_string($conn, $_POST['whatsapp_number'] ?? '');
-        $cnic = mysqli_real_escape_string($conn, $_POST['cnic']);
+        $emergency_contacts = mysqli_real_escape_string($conn, $_POST['emergency_contacts'] ?? '');
+        $cnic = mysqli_real_escape_string($conn, $_POST['cnic'] ?? '');
+        $occupation = mysqli_real_escape_string($conn, $_POST['occupation'] ?? '');
         $full_address = mysqli_real_escape_string($conn, $_POST['full_address'] ?? '');
         $location = mysqli_real_escape_string($conn, $_POST['location'] ?? '');
-        $blood_type = mysqli_real_escape_string($conn, $_POST['blood_type']);
+        $blood_type = mysqli_real_escape_string($conn, $_POST['blood_type'] ?? '');
         $contact_method = mysqli_real_escape_string($conn, $_POST['contact_method'] ?? 'app');
-        $emergency_contact = mysqli_real_escape_string($conn, $_POST['emergency_contact'] ?? 'no');
-        $health_status = mysqli_real_escape_string($conn, $_POST['health_status'] ?? 'eligible');
-        $medical_conditions = mysqli_real_escape_string($conn, $_POST['medical_conditions'] ?? '');
-        $last_donation_date = $_POST['last_donation_date'] ? date('Y-m-d', strtotime($_POST['last_donation_date'])) : NULL;
-        $availability = mysqli_real_escape_string($conn, $_POST['availability'] ?? '');
+        $emergency_availability = mysqli_real_escape_string($conn, $_POST['emergency_availability'] ?? 'no');
+        $last_donation_date = !empty($_POST['last_donation_date']) ? date('Y-m-d', strtotime($_POST['last_donation_date'])) : NULL;
+        
+        // Health Status Fields
+        $chronic_diseases = mysqli_real_escape_string($conn, $_POST['chronic_diseases'] ?? 'no');
+        $chronic_diseases_details = mysqli_real_escape_string($conn, $_POST['chronic_diseases_details'] ?? '');
+        $rejected_donation = mysqli_real_escape_string($conn, $_POST['rejected_donation'] ?? 'no');
+        $rejected_donation_details = mysqli_real_escape_string($conn, $_POST['rejected_donation_details'] ?? '');
+        $hepatitis_history = mysqli_real_escape_string($conn, $_POST['hepatitis_history'] ?? 'no');
+        $hepatitis_history_details = mysqli_real_escape_string($conn, $_POST['hepatitis_history_details'] ?? '');
+        
         $about = mysqli_real_escape_string($conn, $_POST['about'] ?? '');
     
         // Server-side validation
         $errors = [];
-        if (empty($first_name) || empty($last_name) || empty($email) || empty($contact_number) || empty($cnic) || empty($blood_type) || empty($gender) || empty($age)) {
+        if (empty($full_name) || empty($email) || empty($contact_number) || empty($cnic) || empty($blood_type) || empty($gender) || empty($age)) {
             $errors[] = "All required fields must be filled.";
         }
         if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
@@ -102,13 +126,79 @@
                 $errors[] = "Invalid file type or size (JPG/PNG/GIF, max 2MB).";
             }
         }
+        
+        // Blood Test Report Upload (Optional)
+        $blood_test_report = NULL;
+        if (isset($_FILES['blood_test_report']) && $_FILES['blood_test_report']['error'] === UPLOAD_ERR_OK) {
+            $file = $_FILES['blood_test_report'];
+            $allowed_types = ['image/jpeg', 'image/png', 'image/gif', 'application/pdf', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'];
+            $max_size = 5 * 1024 * 1024; // 5MB
+            $file_ext = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
+            $allowed_extensions = ['jpg', 'jpeg', 'png', 'gif', 'pdf', 'doc', 'docx'];
+            
+            if (in_array($file_ext, $allowed_extensions) && $file['size'] <= $max_size) {
+                $target_dir = 'assets/uploads/blood_reports/';
+                if (!file_exists($target_dir)) mkdir($target_dir, 0777, true);
+                $new_filename = "blood_test_" . $userId . "_" . uniqid() . "." . $file_ext;
+                $blood_test_report = $target_dir . $new_filename;
+                if (!move_uploaded_file($file['tmp_name'], $blood_test_report)) {
+                    $errors[] = "Failed to upload blood test report.";
+                }
+            } else {
+                $errors[] = "Invalid file type or size for blood test report (JPG/PNG/GIF/PDF/DOC/DOCX, max 5MB).";
+            }
+        }
+        
+        // Medical Reports Upload (Optional)
+        $medical_reports = NULL;
+        if (isset($_FILES['medical_reports']) && $_FILES['medical_reports']['error'] === UPLOAD_ERR_OK) {
+            $file = $_FILES['medical_reports'];
+            $allowed_types = ['image/jpeg', 'image/png', 'image/gif', 'application/pdf', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'];
+            $max_size = 5 * 1024 * 1024; // 5MB
+            $file_ext = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
+            $allowed_extensions = ['jpg', 'jpeg', 'png', 'gif', 'pdf', 'doc', 'docx'];
+            
+            if (in_array($file_ext, $allowed_extensions) && $file['size'] <= $max_size) {
+                $target_dir = 'assets/uploads/medical_reports/';
+                if (!file_exists($target_dir)) mkdir($target_dir, 0777, true);
+                $new_filename = "medical_report_" . $userId . "_" . uniqid() . "." . $file_ext;
+                $medical_reports = $target_dir . $new_filename;
+                if (!move_uploaded_file($file['tmp_name'], $medical_reports)) {
+                    $errors[] = "Failed to upload medical reports.";
+                }
+            } else {
+                $errors[] = "Invalid file type or size for medical reports (JPG/PNG/GIF/PDF/DOC/DOCX, max 5MB).";
+            }
+        }
     
         if (empty($errors)) {
             // Insert into donors table
-            $insert_query = "INSERT INTO donors (user_id, first_name, last_name, age, gender, email, contact_number, whatsapp_number, cnic, full_address, location, blood_type, contact_method, emergency_contact, health_status, medical_conditions, last_donation_date, availability, about, profile_pic) 
-                             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
-            $stmt = $conn->prepare($insert_query);
-            $stmt->bind_param("ssisssssssssssssssss", $userId, $first_name, $last_name, $age, $gender, $email, $contact_number, $whatsapp_number, $cnic, $full_address, $location, $blood_type, $contact_method, $emergency_contact, $health_status, $medical_conditions, $last_donation_date, $availability, $about, $profile_pic);
+            // Check if new columns exist, if not use old structure
+            $check_columns = $conn->query("SHOW COLUMNS FROM donors LIKE 'full_name'");
+            $has_new_columns = $check_columns && $check_columns->num_rows > 0;
+            
+            if ($has_new_columns) {
+                $insert_query = "INSERT INTO donors (user_id, full_name, first_name, last_name, father_name, age, gender, email, contact_number, whatsapp_number, emergency_contacts, cnic, occupation, full_address, location, blood_type, contact_method, emergency_availability, last_donation_date, chronic_diseases, chronic_diseases_details, rejected_donation, rejected_donation_details, hepatitis_history, hepatitis_history_details, blood_test_report, medical_reports, about, profile_pic) 
+                                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+                $stmt = $conn->prepare($insert_query);
+                $stmt->bind_param("sssssisssssssssssssssssssssss", $userId, $full_name, $first_name, $last_name, $father_name, $age, $gender, $email, $contact_number, $whatsapp_number, $emergency_contacts, $cnic, $occupation, $full_address, $location, $blood_type, $contact_method, $emergency_availability, $last_donation_date, $chronic_diseases, $chronic_diseases_details, $rejected_donation, $rejected_donation_details, $hepatitis_history, $hepatitis_history_details, $blood_test_report, $medical_reports, $about, $profile_pic);
+            } else {
+                // Fallback to old structure for backward compatibility
+                $insert_query = "INSERT INTO donors (user_id, first_name, last_name, age, gender, email, contact_number, whatsapp_number, cnic, full_address, location, blood_type, contact_method, emergency_contact, health_status, medical_conditions, last_donation_date, availability, about, profile_pic) 
+                                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+                $stmt = $conn->prepare($insert_query);
+                // Combine full_name into first_name and last_name if needed
+                if (empty($first_name) && !empty($full_name)) {
+                    $name_parts = explode(' ', $full_name, 2);
+                    $first_name = $name_parts[0];
+                    $last_name = isset($name_parts[1]) ? $name_parts[1] : '';
+                }
+                $emergency_contact = $emergency_availability;
+                $health_status = 'eligible';
+                $medical_conditions = '';
+                $availability = '';
+                $stmt->bind_param("ssisssssssssssssssss", $userId, $first_name, $last_name, $age, $gender, $email, $contact_number, $whatsapp_number, $cnic, $full_address, $location, $blood_type, $contact_method, $emergency_contact, $health_status, $medical_conditions, $last_donation_date, $availability, $about, $profile_pic);
+            }
             
             if ($stmt->execute()) {
                 // Update users table to mark as donor
@@ -344,22 +434,31 @@
                         </div>
                         
                         <div class="form-body">
+                            <!-- Tutorial Button -->
+                            <?php if (!empty($tutorial_video_link) && $tutorial_video_link !== '#'): ?>
+                            <div class="text-center mb-4">
+                                <a href="<?php echo htmlspecialchars($tutorial_video_link); ?>" target="_blank" class="btn btn-outline-danger btn-lg">
+                                    <i class="fas fa-play-circle me-2"></i>Tutorial
+                                </a>
+                            </div>
+                            <?php endif; ?>
+                            
                             <form method="post" enctype="multipart/form-data" id="donorForm">
                                 <!-- Personal Information -->
                                 <div class="section-box">
                                     <h4 class="section-title">Personal Information</h4>
                                     <div class="row g-3">
                                         <div class="col-md-6">
-                                            <label class="form-label">First Name *</label>
-                                            <input type="text" name="first_name" id="first_name" class="form-control" 
-                                                   value="<?php echo htmlspecialchars($user['first_name'] ?? ''); ?>" required>
-                                            <div class="invalid-feedback" id="first_name_error"></div>
+                                            <label class="form-label">Full Name *</label>
+                                            <input type="text" name="full_name" id="full_name" class="form-control" 
+                                                   value="<?php echo htmlspecialchars(($_SESSION['form_data']['full_name'] ?? '') ?: ($user['first_name'] . ' ' . $user['last_name'])); ?>" required>
+                                            <div class="invalid-feedback" id="full_name_error"></div>
                                         </div>
                                         <div class="col-md-6">
-                                            <label class="form-label">Last Name *</label>
-                                            <input type="text" name="last_name" id="last_name" class="form-control" 
-                                                   value="<?php echo htmlspecialchars($user['last_name'] ?? ''); ?>" required>
-                                            <div class="invalid-feedback" id="last_name_error"></div>
+                                            <label class="form-label">Father Name *</label>
+                                            <input type="text" name="father_name" id="father_name" class="form-control" 
+                                                   value="<?php echo htmlspecialchars($_SESSION['form_data']['father_name'] ?? ''); ?>" required>
+                                            <div class="invalid-feedback" id="father_name_error"></div>
                                         </div>
                                         <div class="col-md-6">
                                             <label class="form-label">Age *</label>
@@ -377,30 +476,33 @@
                                             </select>
                                             <div class="invalid-feedback" id="gender_error"></div>
                                         </div>
+                                        <!-- Hidden fields for backward compatibility -->
+                                        <input type="hidden" name="first_name" id="first_name" value="<?php echo htmlspecialchars($user['first_name'] ?? ''); ?>">
+                                        <input type="hidden" name="last_name" id="last_name" value="<?php echo htmlspecialchars($user['last_name'] ?? ''); ?>">
                                     </div>
                                 </div>
                                 
-                                <!-- Contact Information -->
+                                <!-- Contact Details -->
                                 <div class="section-box">
-                                    <h4 class="section-title">Contact Information</h4>
+                                    <h4 class="section-title">Contact Details</h4>
                                     <div class="row g-3">
                                         <div class="col-md-6">
-                                            <label class="form-label">Email *</label>
-                                            <input type="email" name="email" id="email" class="form-control" 
-                                                   value="<?php echo htmlspecialchars($user['email'] ?? ''); ?>" required>
-                                            <div class="invalid-feedback" id="email_error"></div>
-                                        </div>
-                                        <div class="col-md-6">
-                                            <label class="form-label">Contact Number *</label>
+                                            <label class="form-label">Contact No *</label>
                                             <input type="text" name="contact_number" id="contact_number" class="form-control" maxlength="12" 
                                                    placeholder="0300-1234567" required value="<?php echo htmlspecialchars($_SESSION['form_data']['contact_number'] ?? ''); ?>">
                                             <div class="invalid-feedback" id="contact_number_error"></div>
                                         </div>
                                         <div class="col-md-6">
-                                            <label class="form-label">WhatsApp Number *</label>
+                                            <label class="form-label">WhatsApp No *</label>
                                             <input type="text" name="whatsapp_number" id="whatsapp_number" class="form-control" maxlength="12" 
                                                    placeholder="0300-1234567" required value="<?php echo htmlspecialchars($_SESSION['form_data']['whatsapp_number'] ?? ''); ?>">
                                             <div class="invalid-feedback" id="whatsapp_number_error"></div>
+                                        </div>
+                                        <div class="col-md-6">
+                                            <label class="form-label">Emergency Contacts *</label>
+                                            <input type="text" name="emergency_contacts" id="emergency_contacts" class="form-control" 
+                                                   placeholder="Enter emergency contact numbers" required value="<?php echo htmlspecialchars($_SESSION['form_data']['emergency_contacts'] ?? ''); ?>">
+                                            <div class="invalid-feedback" id="emergency_contacts_error"></div>
                                         </div>
                                         <div class="col-md-6">
                                             <label class="form-label">CNIC *</label>
@@ -408,13 +510,44 @@
                                                    placeholder="XXXXX-XXXXXXX-X" required value="<?php echo htmlspecialchars($_SESSION['form_data']['cnic'] ?? ''); ?>">
                                             <div class="invalid-feedback" id="cnic_error"></div>
                                         </div>
-                                        <div class="col-12">
-                                            <label class="form-label">Full Address</label>
-                                            <textarea name="full_address" class="form-control" rows="2"><?php echo htmlspecialchars($_SESSION['form_data']['full_address'] ?? ''); ?></textarea>
+                                        <div class="col-md-6">
+                                            <label class="form-label">Occupation *</label>
+                                            <input type="text" name="occupation" id="occupation" class="form-control" 
+                                                   placeholder="Enter your occupation" required value="<?php echo htmlspecialchars($_SESSION['form_data']['occupation'] ?? ''); ?>">
+                                            <div class="invalid-feedback" id="occupation_error"></div>
+                                        </div>
+                                        <div class="col-md-6">
+                                            <label class="form-label">Email *</label>
+                                            <input type="email" name="email" id="email" class="form-control" 
+                                                   value="<?php echo htmlspecialchars($user['email'] ?? ''); ?>" required>
+                                            <div class="invalid-feedback" id="email_error"></div>
                                         </div>
                                         <div class="col-12">
-                                            <label class="form-label">Location</label>
-                                            <input type="text" name="location" class="form-control" value="<?php echo htmlspecialchars($_SESSION['form_data']['location'] ?? ''); ?>">
+                                            <label class="form-label">Full Address *</label>
+                                            <textarea name="full_address" class="form-control" rows="2" required><?php echo htmlspecialchars($_SESSION['form_data']['full_address'] ?? ''); ?></textarea>
+                                        </div>
+                                    </div>
+                                </div>
+                                
+                                <!-- Communication Preferences -->
+                                <div class="section-box">
+                                    <h4 class="section-title">Communication Preferences</h4>
+                                    <div class="row g-3">
+                                        <div class="col-md-6">
+                                            <label class="form-label">App Messages / WhatsApp</label>
+                                            <select name="contact_method" id="contact_method" class="form-select">
+                                                <option value="app" <?php echo (($_SESSION['form_data']['contact_method'] ?? 'app') === 'app') ? 'selected' : ''; ?>>App Messages</option>
+                                                <option value="whatsapp" <?php echo (($_SESSION['form_data']['contact_method'] ?? '') === 'whatsapp') ? 'selected' : ''; ?>>WhatsApp</option>
+                                                <option value="both" <?php echo (($_SESSION['form_data']['contact_method'] ?? '') === 'both') ? 'selected' : ''; ?>>Both</option>
+                                            </select>
+                                        </div>
+                                        <div class="col-md-6">
+                                            <label class="form-label">Emergency Availability *</label>
+                                            <select name="emergency_availability" id="emergency_availability" class="form-select" required>
+                                                <option value="no" <?php echo (($_SESSION['form_data']['emergency_availability'] ?? 'no') === 'no') ? 'selected' : ''; ?>>No</option>
+                                                <option value="yes" <?php echo (($_SESSION['form_data']['emergency_availability'] ?? '') === 'yes') ? 'selected' : ''; ?>>Yes</option>
+                                            </select>
+                                            <small class="text-muted">Note: You can donate blood within 06 to 08 Hours.</small>
                                         </div>
                                     </div>
                                 </div>
@@ -423,7 +556,7 @@
                                 <div class="section-box">
                                     <h4 class="section-title">Blood Information</h4>
                                     <div class="row g-3">
-                                        <div class="col-md-6">
+                                        <div class="col-md-4">
                                             <label class="form-label">Blood Type *</label>
                                             <select name="blood_type" id="blood_type" class="form-select" required>
                                                 <option value="">Select Blood Type</option>
@@ -438,46 +571,90 @@
                                             </select>
                                             <div class="invalid-feedback" id="blood_type_error"></div>
                                         </div>
-                                        <div class="col-md-6">
-                                            <label class="form-label">Preferred Contact Method</label>
-                                            <select name="contact_method" class="form-select">
-                                                <option value="app" <?php echo (($_SESSION['form_data']['contact_method'] ?? 'app') === 'app') ? 'selected' : ''; ?>>App</option>
-                                                <option value="sms" <?php echo (($_SESSION['form_data']['contact_method'] ?? '') === 'sms') ? 'selected' : ''; ?>>SMS</option>
-                                                <option value="email" <?php echo (($_SESSION['form_data']['contact_method'] ?? '') === 'email') ? 'selected' : ''; ?>>Email</option>
-                                            </select>
+                                        <div class="col-md-4">
+                                            <label class="form-label">Location *</label>
+                                            <input type="text" name="location" id="location" class="form-control" 
+                                                   placeholder="Enter your location" required value="<?php echo htmlspecialchars($_SESSION['form_data']['location'] ?? ''); ?>">
+                                            <div class="invalid-feedback" id="location_error"></div>
                                         </div>
-                                        <div class="col-md-6">
-                                            <label class="form-label">Available for Emergency?</label>
-                                            <select name="emergency_contact" class="form-select">
-                                                <option value="no" <?php echo (($_SESSION['form_data']['emergency_contact'] ?? 'no') === 'no') ? 'selected' : ''; ?>>No</option>
-                                                <option value="yes" <?php echo (($_SESSION['form_data']['emergency_contact'] ?? '') === 'yes') ? 'selected' : ''; ?>>Yes</option>
-                                            </select>
-                                        </div>
-                                        <div class="col-md-6">
-                                            <label class="form-label">Health Status</label>
-                                            <select name="health_status" class="form-select">
-                                                <option value="eligible" <?php echo (($_SESSION['form_data']['health_status'] ?? 'eligible') === 'eligible') ? 'selected' : ''; ?>>Eligible to Donate</option>
-                                                <option value="not_eligible" <?php echo (($_SESSION['form_data']['health_status'] ?? '') === 'not_eligible') ? 'selected' : ''; ?>>Not Eligible</option>
-                                            </select>
-                                        </div>
-                                        <div class="col-12">
-                                            <label class="form-label">Medical Conditions (if any)</label>
-                                            <textarea name="medical_conditions" class="form-control" rows="3"><?php echo htmlspecialchars($_SESSION['form_data']['medical_conditions'] ?? ''); ?></textarea>
-                                        </div>
-                                        <div class="col-md-6">
+                                        <div class="col-md-4">
                                             <label class="form-label">Last Donation Date</label>
-                                            <input type="date" name="last_donation_date" class="form-control" 
+                                            <input type="date" name="last_donation_date" id="last_donation_date" class="form-control" 
                                                    value="<?php echo htmlspecialchars($_SESSION['form_data']['last_donation_date'] ?? ''); ?>">
                                         </div>
-                                        <div class="col-md-6">
-                                            <label class="form-label">Availability</label>
-                                            <input type="text" name="availability" class="form-control" 
-                                                   placeholder="e.g., Weekends, Evenings" value="<?php echo htmlspecialchars($_SESSION['form_data']['availability'] ?? ''); ?>">
-                                        </div>
+                                    </div>
+                                </div>
+                                
+                                <!-- Current Health Status -->
+                                <div class="section-box">
+                                    <h4 class="section-title">Current Health Status</h4>
+                                    <div class="row g-3">
                                         <div class="col-12">
-                                            <label class="form-label">About You</label>
-                                            <textarea name="about" class="form-control" rows="3" 
-                                                      placeholder="Tell us about yourself"><?php echo htmlspecialchars($_SESSION['form_data']['about'] ?? ''); ?></textarea>
+                                            <label class="form-label">Any Chronic Diseases? (Diabetes, heart diseases, etc.) *</label>
+                                            <select name="chronic_diseases" id="chronic_diseases" class="form-select" required>
+                                                <option value="no" <?php echo (($_SESSION['form_data']['chronic_diseases'] ?? 'no') === 'no') ? 'selected' : ''; ?>>No</option>
+                                                <option value="yes" <?php echo (($_SESSION['form_data']['chronic_diseases'] ?? '') === 'yes') ? 'selected' : ''; ?>>Yes</option>
+                                            </select>
+                                        </div>
+                                        <div class="col-12" id="chronic_diseases_details_wrapper" style="display: <?php echo (($_SESSION['form_data']['chronic_diseases'] ?? 'no') === 'yes') ? 'block' : 'none'; ?>;">
+                                            <label class="form-label">Please provide details:</label>
+                                            <textarea name="chronic_diseases_details" id="chronic_diseases_details" class="form-control" rows="3" 
+                                                      placeholder="Enter details about chronic diseases"><?php echo htmlspecialchars($_SESSION['form_data']['chronic_diseases_details'] ?? ''); ?></textarea>
+                                        </div>
+                                        
+                                        <div class="col-12">
+                                            <label class="form-label">Have you ever been rejected for Blood Donation? *</label>
+                                            <select name="rejected_donation" id="rejected_donation" class="form-select" required>
+                                                <option value="no" <?php echo (($_SESSION['form_data']['rejected_donation'] ?? 'no') === 'no') ? 'selected' : ''; ?>>No</option>
+                                                <option value="yes" <?php echo (($_SESSION['form_data']['rejected_donation'] ?? '') === 'yes') ? 'selected' : ''; ?>>Yes</option>
+                                            </select>
+                                        </div>
+                                        <div class="col-12" id="rejected_donation_details_wrapper" style="display: <?php echo (($_SESSION['form_data']['rejected_donation'] ?? 'no') === 'yes') ? 'block' : 'none'; ?>;">
+                                            <label class="form-label">Please provide details:</label>
+                                            <textarea name="rejected_donation_details" id="rejected_donation_details" class="form-control" rows="3" 
+                                                      placeholder="Enter details about rejection"><?php echo htmlspecialchars($_SESSION['form_data']['rejected_donation_details'] ?? ''); ?></textarea>
+                                        </div>
+                                        
+                                        <div class="col-12">
+                                            <label class="form-label">Any History of Hepatitis B/C, HIV, Malaria or STD? *</label>
+                                            <select name="hepatitis_history" id="hepatitis_history" class="form-select" required>
+                                                <option value="no" <?php echo (($_SESSION['form_data']['hepatitis_history'] ?? 'no') === 'no') ? 'selected' : ''; ?>>No</option>
+                                                <option value="yes" <?php echo (($_SESSION['form_data']['hepatitis_history'] ?? '') === 'yes') ? 'selected' : ''; ?>>Yes</option>
+                                            </select>
+                                        </div>
+                                        <div class="col-12" id="hepatitis_history_details_wrapper" style="display: <?php echo (($_SESSION['form_data']['hepatitis_history'] ?? 'no') === 'yes') ? 'block' : 'none'; ?>;">
+                                            <label class="form-label">Please provide details:</label>
+                                            <textarea name="hepatitis_history_details" id="hepatitis_history_details" class="form-control" rows="3" 
+                                                      placeholder="Enter details about medical history"><?php echo htmlspecialchars($_SESSION['form_data']['hepatitis_history_details'] ?? ''); ?></textarea>
+                                        </div>
+                                    </div>
+                                </div>
+                                
+                                <!-- File Uploads -->
+                                <div class="section-box">
+                                    <h4 class="section-title">Medical Reports (Optional)</h4>
+                                    <div class="row g-3">
+                                        <div class="col-md-6">
+                                            <label class="form-label">Upload Your Blood Test Report</label>
+                                            <div class="upload-btn-wrapper">
+                                                <button type="button" class="upload-btn">
+                                                    <i class="fas fa-cloud-upload-alt me-2"></i>Choose File (JPG, DOC, PDF, etc.)
+                                                </button>
+                                                <input type="file" name="blood_test_report" id="blood_test_report" accept=".jpg,.jpeg,.png,.gif,.pdf,.doc,.docx">
+                                            </div>
+                                            <small class="text-muted">Max file size: 5MB</small>
+                                            <div id="blood_test_report_name" class="mt-2 text-muted"></div>
+                                        </div>
+                                        <div class="col-md-6">
+                                            <label class="form-label">Upload Your Recent Medical Reports</label>
+                                            <div class="upload-btn-wrapper">
+                                                <button type="button" class="upload-btn">
+                                                    <i class="fas fa-cloud-upload-alt me-2"></i>Choose File (JPG, DOC, PDF, etc.)
+                                                </button>
+                                                <input type="file" name="medical_reports" id="medical_reports" accept=".jpg,.jpeg,.png,.gif,.pdf,.doc,.docx">
+                                            </div>
+                                            <small class="text-muted">Max file size: 5MB</small>
+                                            <div id="medical_reports_name" class="mt-2 text-muted"></div>
                                         </div>
                                     </div>
                                 </div>
@@ -493,7 +670,7 @@
                                                      alt="Profile Preview">
                                             </div>
                                             <div class="upload-btn-wrapper">
-                                                <button class="upload-btn">
+                                                <button type="button" class="upload-btn">
                                                     <i class="fas fa-cloud-upload-alt me-2"></i>Choose Profile Picture
                                                 </button>
                                                 <input type="file" name="profile_pic" id="profile_pic" accept="image/*">
@@ -503,13 +680,37 @@
                                     </div>
                                 </div>
                                 
+                                <!-- Tell Us About Yourself -->
+                                <div class="section-box">
+                                    <h4 class="section-title">Tell Us About Yourself</h4>
+                                    <div class="row g-3">
+                                        <div class="col-12">
+                                            <label class="form-label">Add Details</label>
+                                            <textarea name="about" id="about" class="form-control" rows="4" 
+                                                      placeholder="Tell us about yourself"><?php echo htmlspecialchars($_SESSION['form_data']['about'] ?? ''); ?></textarea>
+                                        </div>
+                                    </div>
+                                </div>
+                                
+                                <!-- Important Note -->
+                                <div class="alert alert-info mt-4">
+                                    <strong><i class="fas fa-info-circle me-2"></i>Important Note:</strong> Please provide all the information correctly and accurately. We will try our best to Connect with Needy. In case of any misuses of this service, your request can be canceled and blocked permanently.
+                                </div>
+                                
                                 <!-- Terms and Conditions -->
-                                <div class="form-check mt-4 mb-4">
+                                <div class="form-check mt-4 mb-3">
                                     <input class="form-check-input" type="checkbox" id="terms" required>
                                     <label class="form-check-label" for="terms">
-                                        I agree to the <a href="Privacy Policy & terms of Conditions BloodKonnector.pdf" class="text-danger">Terms and Conditions</a>
+                                        I'm agree with terms and conditions and Privacy Policy.
                                     </label>
                                     <div class="invalid-feedback">You must agree to the terms</div>
+                                </div>
+                                <div class="form-check mb-4">
+                                    <input class="form-check-input" type="checkbox" id="info_correct" required>
+                                    <label class="form-check-label" for="info_correct">
+                                        I'm agree all the information is correct.
+                                    </label>
+                                    <div class="invalid-feedback">You must confirm that all information is correct</div>
                                 </div>
                                 
                                 <!-- Submit Button -->
@@ -623,6 +824,78 @@
                 }
             });
             
+            // Conditional fields for health status
+            document.getElementById('chronic_diseases').addEventListener('change', function() {
+                const detailsWrapper = document.getElementById('chronic_diseases_details_wrapper');
+                if (this.value === 'yes') {
+                    detailsWrapper.style.display = 'block';
+                    document.getElementById('chronic_diseases_details').required = true;
+                } else {
+                    detailsWrapper.style.display = 'none';
+                    document.getElementById('chronic_diseases_details').required = false;
+                    document.getElementById('chronic_diseases_details').value = '';
+                }
+            });
+            
+            document.getElementById('rejected_donation').addEventListener('change', function() {
+                const detailsWrapper = document.getElementById('rejected_donation_details_wrapper');
+                if (this.value === 'yes') {
+                    detailsWrapper.style.display = 'block';
+                    document.getElementById('rejected_donation_details').required = true;
+                } else {
+                    detailsWrapper.style.display = 'none';
+                    document.getElementById('rejected_donation_details').required = false;
+                    document.getElementById('rejected_donation_details').value = '';
+                }
+            });
+            
+            document.getElementById('hepatitis_history').addEventListener('change', function() {
+                const detailsWrapper = document.getElementById('hepatitis_history_details_wrapper');
+                if (this.value === 'yes') {
+                    detailsWrapper.style.display = 'block';
+                    document.getElementById('hepatitis_history_details').required = true;
+                } else {
+                    detailsWrapper.style.display = 'none';
+                    document.getElementById('hepatitis_history_details').required = false;
+                    document.getElementById('hepatitis_history_details').value = '';
+                }
+            });
+            
+            // File upload name display
+            document.getElementById('blood_test_report').addEventListener('change', function(e) {
+                const file = e.target.files[0];
+                const nameDiv = document.getElementById('blood_test_report_name');
+                if (file) {
+                    nameDiv.textContent = 'Selected: ' + file.name;
+                    nameDiv.classList.remove('text-muted');
+                    nameDiv.classList.add('text-success');
+                } else {
+                    nameDiv.textContent = '';
+                }
+            });
+            
+            document.getElementById('medical_reports').addEventListener('change', function(e) {
+                const file = e.target.files[0];
+                const nameDiv = document.getElementById('medical_reports_name');
+                if (file) {
+                    nameDiv.textContent = 'Selected: ' + file.name;
+                    nameDiv.classList.remove('text-muted');
+                    nameDiv.classList.add('text-success');
+                } else {
+                    nameDiv.textContent = '';
+                }
+            });
+            
+            // Split full name for backward compatibility
+            document.getElementById('full_name').addEventListener('blur', function() {
+                const fullName = this.value.trim();
+                if (fullName) {
+                    const nameParts = fullName.split(' ', 2);
+                    document.getElementById('first_name').value = nameParts[0] || '';
+                    document.getElementById('last_name').value = nameParts[1] || '';
+                }
+            });
+            
             // Form validation
             document.getElementById('donorForm').addEventListener('submit', function(e) {
                 e.preventDefault();
@@ -641,15 +914,23 @@
                 
                 // Validate required fields
                 const requiredFields = [
-                    { id: 'first_name', label: 'First Name' },
-                    { id: 'last_name', label: 'Last Name' },
+                    { id: 'full_name', label: 'Full Name' },
+                    { id: 'father_name', label: 'Father Name' },
                     { id: 'email', label: 'Email' },
                     { id: 'contact_number', label: 'Contact Number' },
                     { id: 'whatsapp_number', label: 'WhatsApp Number' },
+                    { id: 'emergency_contacts', label: 'Emergency Contacts' },
                     { id: 'cnic', label: 'CNIC' },
+                    { id: 'occupation', label: 'Occupation' },
+                    { id: 'full_address', label: 'Full Address' },
+                    { id: 'location', label: 'Location' },
                     { id: 'blood_type', label: 'Blood Type' },
                     { id: 'gender', label: 'Gender' },
-                    { id: 'age', label: 'Age' }
+                    { id: 'age', label: 'Age' },
+                    { id: 'emergency_availability', label: 'Emergency Availability' },
+                    { id: 'chronic_diseases', label: 'Chronic Diseases' },
+                    { id: 'rejected_donation', label: 'Rejected Donation' },
+                    { id: 'hepatitis_history', label: 'Hepatitis History' }
                 ];
                 
                 requiredFields.forEach(field => {
@@ -741,11 +1022,78 @@
                     }
                 }
                 
-                // Validate terms checkbox
+                // Validate file uploads (optional but validate format if provided)
+                const bloodTestReport = document.getElementById('blood_test_report');
+                if (bloodTestReport.files && bloodTestReport.files.length > 0) {
+                    const file = bloodTestReport.files[0];
+                    const allowedExtensions = ['jpg', 'jpeg', 'png', 'gif', 'pdf', 'doc', 'docx'];
+                    const fileExt = file.name.split('.').pop().toLowerCase();
+                    if (!allowedExtensions.includes(fileExt)) {
+                        errorMessages.push('Blood test report: Invalid file type. Allowed: JPG, PNG, GIF, PDF, DOC, DOCX');
+                        isValid = false;
+                    } else if (file.size > 5 * 1024 * 1024) {
+                        errorMessages.push('Blood test report: File size must be less than 5MB');
+                        isValid = false;
+                    }
+                }
+                
+                const medicalReports = document.getElementById('medical_reports');
+                if (medicalReports.files && medicalReports.files.length > 0) {
+                    const file = medicalReports.files[0];
+                    const allowedExtensions = ['jpg', 'jpeg', 'png', 'gif', 'pdf', 'doc', 'docx'];
+                    const fileExt = file.name.split('.').pop().toLowerCase();
+                    if (!allowedExtensions.includes(fileExt)) {
+                        errorMessages.push('Medical reports: Invalid file type. Allowed: JPG, PNG, GIF, PDF, DOC, DOCX');
+                        isValid = false;
+                    } else if (file.size > 5 * 1024 * 1024) {
+                        errorMessages.push('Medical reports: File size must be less than 5MB');
+                        isValid = false;
+                    }
+                }
+                
+                // Validate conditional required fields
+                const chronicDiseases = document.getElementById('chronic_diseases').value;
+                if (chronicDiseases === 'yes') {
+                    const details = document.getElementById('chronic_diseases_details');
+                    if (!details.value.trim()) {
+                        details.classList.add('is-invalid');
+                        errorMessages.push('Please provide details about chronic diseases');
+                        isValid = false;
+                    }
+                }
+                
+                const rejectedDonation = document.getElementById('rejected_donation').value;
+                if (rejectedDonation === 'yes') {
+                    const details = document.getElementById('rejected_donation_details');
+                    if (!details.value.trim()) {
+                        details.classList.add('is-invalid');
+                        errorMessages.push('Please provide details about rejection');
+                        isValid = false;
+                    }
+                }
+                
+                const hepatitisHistory = document.getElementById('hepatitis_history').value;
+                if (hepatitisHistory === 'yes') {
+                    const details = document.getElementById('hepatitis_history_details');
+                    if (!details.value.trim()) {
+                        details.classList.add('is-invalid');
+                        errorMessages.push('Please provide details about medical history');
+                        isValid = false;
+                    }
+                }
+                
+                // Validate terms checkboxes
                 if (!document.getElementById('terms').checked) {
                     document.getElementById('terms').classList.add('is-invalid');
                     document.querySelector('#terms + .invalid-feedback').style.display = 'block';
-                    errorMessages.push('You must agree to the terms');
+                    errorMessages.push('You must agree to the terms and conditions');
+                    isValid = false;
+                }
+                
+                if (!document.getElementById('info_correct').checked) {
+                    document.getElementById('info_correct').classList.add('is-invalid');
+                    document.querySelector('#info_correct + .invalid-feedback').style.display = 'block';
+                    errorMessages.push('You must confirm that all information is correct');
                     isValid = false;
                 }
                 
