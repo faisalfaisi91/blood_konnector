@@ -8,7 +8,6 @@
         header("Location: sign-in.php");
         exit();
     }
-    
     $userId = $_SESSION['user_id'];
     
     // Validate other_user_id
@@ -19,12 +18,10 @@
     }
     $other_user_id = $_GET['id'];
     
-    // Verify current user data - Check status and prioritize active profile
+    // Verify current user data - Check profile existence
     $current_user_query = "
         SELECT u.first_name, u.last_name, u.profile_pic,
                CASE 
-                   WHEN d.user_id IS NOT NULL AND d.status = 'active' THEN 'donor'
-                   WHEN r.user_id IS NOT NULL AND r.status = 'active' THEN 'recipient'
                    WHEN d.user_id IS NOT NULL THEN 'donor'
                    WHEN r.user_id IS NOT NULL THEN 'recipient'
                    ELSE 'unknown'
@@ -51,12 +48,10 @@
     $current_user_data = $current_user_result->fetch_assoc();
     $current_user_role = $current_user_data['role'];
     
-    // Get other user data - FIXED to check status and prioritize active profile
+    // Get other user data - Check profile existence
     $other_user_query = "
         SELECT u.first_name, u.last_name,
                CASE 
-                   WHEN d.user_id IS NOT NULL AND d.status = 'active' THEN 'donor'
-                   WHEN r.user_id IS NOT NULL AND r.status = 'active' THEN 'recipient'
                    WHEN d.user_id IS NOT NULL THEN 'donor'
                    WHEN r.user_id IS NOT NULL THEN 'recipient'
                    ELSE 'unknown'
