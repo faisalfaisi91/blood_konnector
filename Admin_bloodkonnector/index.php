@@ -447,11 +447,17 @@ if ($recipient_result = $conn->query($recipient_query)) {
 
                 <?php
                 // Fetch current settings
-                $tutorial_video = '#';
-                $settings_query = "SELECT setting_value FROM settings WHERE setting_key = 'donor_tutorial_video' LIMIT 1";
+                $donor_tutorial_video = '#';
+                $recipient_tutorial_video = '#';
+                
+                $settings_query = "SELECT setting_key, setting_value FROM settings WHERE setting_key IN ('donor_tutorial_video', 'recipient_tutorial_video')";
                 if ($settings_result = $conn->query($settings_query)) {
-                    if ($settings_result->num_rows > 0) {
-                        $tutorial_video = $settings_result->fetch_assoc()['setting_value'];
+                    while ($row = $settings_result->fetch_assoc()) {
+                        if ($row['setting_key'] === 'donor_tutorial_video') {
+                            $donor_tutorial_video = $row['setting_value'];
+                        } elseif ($row['setting_key'] === 'recipient_tutorial_video') {
+                            $recipient_tutorial_video = $row['setting_value'];
+                        }
                     }
                 }
                 ?>
@@ -464,13 +470,13 @@ if ($recipient_result = $conn->query($recipient_query)) {
                             </h3>
                             
                             <div class="mb-4">
-                                <label for="tutorial_video" class="block text-sm font-medium text-gray-700 mb-2">
+                                <label for="donor_tutorial_video" class="block text-sm font-medium text-gray-700 mb-2">
                                     YouTube Video Link
                                 </label>
                                 <input type="url" 
-                                       id="tutorial_video" 
-                                       name="tutorial_video" 
-                                       value="<?php echo htmlspecialchars($tutorial_video); ?>"
+                                       id="donor_tutorial_video" 
+                                       name="donor_tutorial_video" 
+                                       value="<?php echo htmlspecialchars($donor_tutorial_video); ?>"
                                        placeholder="https://www.youtube.com/watch?v=..." 
                                        class="w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent">
                                 <p class="mt-2 text-sm text-gray-500">
@@ -478,31 +484,43 @@ if ($recipient_result = $conn->query($recipient_query)) {
                                     Enter the full YouTube video URL. This link will appear as a "Tutorial" button on the donor registration form.
                                 </p>
                             </div>
+                        </div>
 
-                            <div class="flex items-center justify-between pt-4 border-t border-gray-200">
-                                <div>
-                                    <p class="text-sm text-gray-600">
-                                        <i class="fas fa-lightbulb mr-1 text-yellow-500"></i>
-                                        <strong>Tip:</strong> You can use any YouTube video URL format (watch?v= or youtu.be/)
-                                    </p>
-                                </div>
-                                <button type="submit" 
-                                        class="bg-red-600 hover:bg-red-700 text-white font-medium py-2 px-6 rounded-md transition-colors duration-200 flex items-center">
-                                    <i class="fas fa-save mr-2"></i>Save Settings
-                                </button>
+                        <div class="mb-6 pt-6 border-t border-gray-200">
+                            <h3 class="text-lg font-semibold mb-4 text-gray-800">
+                                <i class="fas fa-video mr-2 text-red-600"></i>Recipient Registration Tutorial
+                            </h3>
+                            
+                            <div class="mb-4">
+                                <label for="recipient_tutorial_video" class="block text-sm font-medium text-gray-700 mb-2">
+                                    YouTube Video Link
+                                </label>
+                                <input type="url" 
+                                       id="recipient_tutorial_video" 
+                                       name="recipient_tutorial_video" 
+                                       value="<?php echo htmlspecialchars($recipient_tutorial_video); ?>"
+                                       placeholder="https://www.youtube.com/watch?v=..." 
+                                       class="w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent">
+                                <p class="mt-2 text-sm text-gray-500">
+                                    <i class="fas fa-info-circle mr-1"></i>
+                                    Enter the full YouTube video URL. This link will appear as a "Tutorial" button on the recipient registration form.
+                                </p>
                             </div>
                         </div>
-                    </form>
-                </div>
 
-                <!-- Additional Settings Section (for future expansion) -->
-                <div class="card p-6 mt-6">
-                    <h3 class="text-lg font-semibold mb-4 text-gray-800">
-                        <i class="fas fa-cog mr-2 text-red-600"></i>Other Settings
-                    </h3>
-                    <p class="text-gray-600 text-sm">
-                        More settings will be available here in future updates.
-                    </p>
+                        <div class="flex items-center justify-between pt-4 border-t border-gray-200">
+                            <div>
+                                <p class="text-sm text-gray-600">
+                                    <i class="fas fa-lightbulb mr-1 text-yellow-500"></i>
+                                    <strong>Tip:</strong> You can use any YouTube video URL format (watch?v= or youtu.be/)
+                                </p>
+                            </div>
+                            <button type="submit" 
+                                    class="bg-red-600 hover:bg-red-700 text-white font-medium py-2 px-6 rounded-md transition-colors duration-200 flex items-center">
+                                <i class="fas fa-save mr-2"></i>Save Settings
+                            </button>
+                        </div>
+                    </form>
                 </div>
             </div>
         </main>
