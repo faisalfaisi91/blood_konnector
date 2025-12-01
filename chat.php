@@ -12,7 +12,6 @@
         header("Location: sign-in.php");
         exit();
     }
-    
     $userId = $_SESSION['user_id'];
     
     // Update last activity
