@@ -3,7 +3,16 @@
  * Handles dropdown toggling and user interactions
  */
 
-document.addEventListener('DOMContentLoaded', function() {
+// Track if already initialized to prevent duplicate listeners
+let profileSwitcherInitialized = false;
+
+// Initialize profile switcher - use both DOMContentLoaded and immediate execution
+function initProfileSwitcher() {
+    // Prevent multiple initializations
+    if (profileSwitcherInitialized) {
+        return;
+    }
+    
     const switcherBtn = document.getElementById('profileSwitcherBtn');
     const switcherMenu = document.getElementById('profileSwitcherMenu');
     
@@ -11,15 +20,36 @@ document.addEventListener('DOMContentLoaded', function() {
         return; // Elements don't exist on this page
     }
     
-    // Toggle dropdown on button click
-    switcherBtn.addEventListener('click', function(e) {
+    // Mark as initialized
+    profileSwitcherInitialized = true;
+    
+    // Ensure button is clickable with highest priority
+    switcherBtn.style.pointerEvents = 'auto';
+    switcherBtn.style.cursor = 'pointer';
+    switcherBtn.style.position = 'relative';
+    switcherBtn.style.zIndex = '10001';
+    switcherBtn.setAttribute('tabindex', '0');
+    
+    // Ensure menu has proper z-index
+    switcherMenu.style.zIndex = '10002';
+    switcherMenu.style.pointerEvents = 'auto';
+    
+    // Use current references
+    const currentSwitcherBtn = switcherBtn;
+    const currentSwitcherMenu = switcherMenu;
+    
+    // Toggle dropdown on button click - use capture phase to ensure it fires first
+    currentSwitcherBtn.addEventListener('click', function(e) {
+        e.preventDefault();
         e.stopPropagation();
+        e.stopImmediatePropagation();
+        console.log('Profile switcher button clicked'); // Debug log
         toggleDropdown();
-    });
+    }, true); // Use capture phase
     
     // Close dropdown when clicking outside
     document.addEventListener('click', function(e) {
-        if (!switcherBtn.contains(e.target) && !switcherMenu.contains(e.target)) {
+        if (!currentSwitcherBtn.contains(e.target) && !currentSwitcherMenu.contains(e.target)) {
             closeDropdown();
         }
     });
@@ -32,7 +62,7 @@ document.addEventListener('DOMContentLoaded', function() {
     });
     
     // Prevent dropdown from closing when clicking inside it
-    switcherMenu.addEventListener('click', function(e) {
+    currentSwitcherMenu.addEventListener('click', function(e) {
         e.stopPropagation();
     });
     
@@ -40,7 +70,7 @@ document.addEventListener('DOMContentLoaded', function() {
      * Toggle dropdown visibility
      */
     function toggleDropdown() {
-        const isOpen = switcherMenu.classList.contains('show');
+        const isOpen = currentSwitcherMenu.classList.contains('show');
         
         if (isOpen) {
             closeDropdown();
@@ -53,25 +83,25 @@ document.addEventListener('DOMContentLoaded', function() {
      * Open dropdown
      */
     function openDropdown() {
-        switcherMenu.classList.add('show');
-        switcherBtn.classList.add('active');
-        switcherBtn.setAttribute('aria-expanded', 'true');
+        currentSwitcherMenu.classList.add('show');
+        currentSwitcherBtn.classList.add('active');
+        currentSwitcherBtn.setAttribute('aria-expanded', 'true');
     }
     
     /**
      * Close dropdown
      */
     function closeDropdown() {
-        switcherMenu.classList.remove('show');
-        switcherBtn.classList.remove('active');
-        switcherBtn.setAttribute('aria-expanded', 'false');
+        currentSwitcherMenu.classList.remove('show');
+        currentSwitcherBtn.classList.remove('active');
+        currentSwitcherBtn.setAttribute('aria-expanded', 'false');
     }
     
     // Keyboard navigation for accessibility
-    const profileOptions = switcherMenu.querySelectorAll('.profile-option');
+    const profileOptions = currentSwitcherMenu.querySelectorAll('.profile-option');
     let currentFocusIndex = -1;
     
-    switcherBtn.addEventListener('keydown', function(e) {
+    currentSwitcherBtn.addEventListener('keydown', function(e) {
         if (e.key === 'ArrowDown' || e.key === 'Enter' || e.key === ' ') {
             e.preventDefault();
             openDropdown();
@@ -96,29 +126,51 @@ document.addEventListener('DOMContentLoaded', function() {
             } else if (e.key === 'Escape') {
                 e.preventDefault();
                 closeDropdown();
-                switcherBtn.focus();
+                currentSwitcherBtn.focus();
             }
         });
     });
     
     // Add smooth transition effect
-    switcherMenu.style.transition = 'all 0.3s ease';
+    currentSwitcherMenu.style.transition = 'all 0.3s ease';
+    currentSwitcherMenu.style.zIndex = '10002';
+    currentSwitcherMenu.style.pointerEvents = 'auto';
+}
+
+// Try to initialize immediately if DOM is ready
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', initProfileSwitcher);
+} else {
+    // DOM is already loaded
+    initProfileSwitcher();
+}
+
+// Also try after a short delay to ensure all scripts are loaded
+setTimeout(initProfileSwitcher, 100);
+
+// Legacy DOMContentLoaded listener for backward compatibility
+document.addEventListener('DOMContentLoaded', function() {
+    // Small delay to ensure other scripts have initialized
+    setTimeout(initProfileSwitcher, 50);
     
     // Show first-time user tooltip (optional)
-    const hasSeenTooltip = localStorage.getItem('profileSwitcherTooltipSeen');
-    
-    if (!hasSeenTooltip && profileOptions.length > 1) {
-        // User has multiple profiles and hasn't seen tooltip
-        setTimeout(function() {
-            showTooltip();
-            
-            // Mark as seen after 5 seconds
+    setTimeout(function() {
+        const hasSeenTooltip = localStorage.getItem('profileSwitcherTooltipSeen');
+        const profileOptions = document.querySelectorAll('.profile-option');
+        
+        if (!hasSeenTooltip && profileOptions.length > 1) {
+            // User has multiple profiles and hasn't seen tooltip
             setTimeout(function() {
-                hideTooltip();
-                localStorage.setItem('profileSwitcherTooltipSeen', 'true');
-            }, 5000);
-        }, 1000);
-    }
+                showTooltip();
+                
+                // Mark as seen after 5 seconds
+                setTimeout(function() {
+                    hideTooltip();
+                    localStorage.setItem('profileSwitcherTooltipSeen', 'true');
+                }, 5000);
+            }, 1000);
+        }
+    }, 200);
     
     /**
      * Show tooltip for first-time users

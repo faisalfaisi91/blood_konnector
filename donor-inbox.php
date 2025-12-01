@@ -933,6 +933,7 @@ document.addEventListener('DOMContentLoaded', function() {
 });
 </script>
 
+<?php include('assets/includes/link-js.php'); ?>
 <?php //include('assets/includes/footer.php'); ?>
 </body>
 </html>

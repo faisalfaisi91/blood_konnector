@@ -28,6 +28,7 @@
     margin-left: 0;
     margin-right: 0;
     flex-shrink: 0;
+    z-index: 10000;
 }
 
 /* Profile Switcher Button */
@@ -48,6 +49,9 @@
     white-space: nowrap;
     height: 36px;
     line-height: 1;
+    position: relative;
+    z-index: 10001;
+    pointer-events: auto !important;
 }
 
 .profile-switcher-btn:hover {
@@ -87,9 +91,10 @@
     visibility: hidden;
     transform: translateY(-10px);
     transition: all 0.3s ease;
-    z-index: 9999;
+    z-index: 10002;
     overflow: hidden;
     border: 1px solid rgba(0, 0, 0, 0.08);
+    pointer-events: auto !important;
 }
 
 .profile-switcher-menu.show {

@@ -1,9 +1,13 @@
 <?php
     session_start();
     include('assets/lib/openconn.php');
+    require_once('assets/lib/ProfileManager.php');
+    
+    // Initialize ProfileManager
+    $profileManager = new ProfileManager($conn);
     
     // Check if user is logged in
-    if (!isset($_SESSION['user_id'])) {
+    if (!$profileManager->isLoggedIn()) {
         $_SESSION['error'] = "Please login to view this page!";
         header("Location: sign-in.php");
         exit();
@@ -11,56 +15,57 @@
     
     $userId = $_SESSION['user_id'];
     
+    // Update last activity
+    $profileManager->updateLastActivity();
+    
     // Validate other_user_id
     if (!isset($_GET['id']) || empty($_GET['id'])) {
         $_SESSION['error'] = "Invalid user ID.";
-        header("Location: donor-inbox.php");
+        // Redirect to appropriate inbox based on active profile
+        $active_profile = $profileManager->getCurrentProfile();
+        $redirect_to = ($active_profile === 'recipient') ? 'recipient-inbox.php' : 'donor-inbox.php';
+        header("Location: $redirect_to");
         exit();
     }
     $other_user_id = $_GET['id'];
     
-    // Verify current user data - Check status and prioritize active profile
-    $current_user_query = "
-        SELECT u.first_name, u.last_name, u.profile_pic,
-               CASE 
-                   WHEN d.user_id IS NOT NULL AND d.status = 'active' THEN 'donor'
-                   WHEN r.user_id IS NOT NULL AND r.status = 'active' THEN 'recipient'
-                   WHEN d.user_id IS NOT NULL THEN 'donor'
-                   WHEN r.user_id IS NOT NULL THEN 'recipient'
-                   ELSE 'unknown'
-               END AS role,
-               COALESCE(u.profile_pic, d.profile_pic, r.profile_pic) AS profile_pic
-        FROM users u
-        LEFT JOIN donors d ON u.user_id = d.user_id
-        LEFT JOIN recipients r ON u.user_id = r.user_id
-        WHERE u.user_id = ?";
-    $stmt = $conn->prepare($current_user_query);
-    if (!$stmt) {
-        error_log("Current user query preparation failed: " . $conn->error);
-        header("Location: donor-detail.php?id=" . urlencode($other_user_id) . "&alert=recipient_required");
-        exit();
+    // Get current user's active profile (from session, not just table membership)
+    $current_user_role = $profileManager->getCurrentProfile();
+    
+    // If no active profile is set, try to determine from available roles
+    if (!$current_user_role) {
+        $roles = $profileManager->getUserRoles();
+        // Prioritize recipient if both exist (for chat functionality)
+        if ($roles['is_recipient']) {
+            $current_user_role = 'recipient';
+            $profileManager->setViewingProfile('recipient');
+        } elseif ($roles['is_donor']) {
+            $current_user_role = 'donor';
+            $profileManager->setViewingProfile('donor');
+        } else {
+            $current_user_role = 'unknown';
+        }
     }
-    $stmt->bind_param("s", $userId);
-    $stmt->execute();
-    $current_user_result = $stmt->get_result();
-    if ($current_user_result->num_rows === 0) {
+    
+    // Get current user data
+    $current_user_data = $profileManager->getUserInfo();
+    if (!$current_user_data) {
         error_log("Current user not found: user_id = $userId");
         header("Location: donor-detail.php?id=" . urlencode($other_user_id) . "&alert=recipient_required");
         exit();
     }
-    $current_user_data = $current_user_result->fetch_assoc();
-    $current_user_role = $current_user_data['role'];
     
-    // Get other user data - FIXED to check status and prioritize active profile
+    // Get profile picture
+    $current_user_pic = !empty(trim($current_user_data['profile_pic']))
+        ? $current_user_data['profile_pic']
+        : 'assets/images/default-avatar.png';
+    
+    // Get other user data - Check profile type
+    // For the other user, we need to determine their role based on table membership
     $other_user_query = "
-        SELECT u.first_name, u.last_name,
-               CASE 
-                   WHEN d.user_id IS NOT NULL AND d.status = 'active' THEN 'donor'
-                   WHEN r.user_id IS NOT NULL AND r.status = 'active' THEN 'recipient'
-                   WHEN d.user_id IS NOT NULL THEN 'donor'
-                   WHEN r.user_id IS NOT NULL THEN 'recipient'
-                   ELSE 'unknown'
-               END AS role,
+        SELECT u.first_name, u.last_name, u.profile_pic,
+               d.user_id AS is_donor,
+               r.user_id AS is_recipient,
                COALESCE(u.profile_pic, d.profile_pic, r.profile_pic) AS profile_pic
         FROM users u
         LEFT JOIN donors d ON u.user_id = d.user_id
@@ -79,11 +84,25 @@
     if ($other_user_result->num_rows === 0) {
         error_log("Other user not found: user_id = $other_user_id");
         $_SESSION['error'] = "User not found.";
-        header("Location: donor-inbox.php");
+        // Redirect to appropriate inbox based on active profile
+        $redirect_to = ($current_user_role === 'recipient') ? 'recipient-inbox.php' : 'donor-inbox.php';
+        header("Location: $redirect_to");
         exit();
     }
     $other_user_data = $other_user_result->fetch_assoc();
-    $other_user_role = $other_user_data['role'];
+    
+    // Determine other user's role
+    // If they have both profiles, choose the opposite of current user's role
+    if ($other_user_data['is_donor'] && $other_user_data['is_recipient']) {
+        // User has both profiles - choose opposite of current user
+        $other_user_role = ($current_user_role === 'recipient') ? 'donor' : 'recipient';
+    } elseif ($other_user_data['is_donor']) {
+        $other_user_role = 'donor';
+    } elseif ($other_user_data['is_recipient']) {
+        $other_user_role = 'recipient';
+    } else {
+        $other_user_role = 'unknown';
+    }
     
     // Check for unknown roles
     if ($current_user_role === 'unknown' || $other_user_role === 'unknown') {
@@ -129,27 +148,11 @@
         exit();
     }
     
-    // Get online status
-    $online_status = false;
-    $activity_query = "SELECT last_activity FROM users WHERE user_id = ?";
-    $stmt = $conn->prepare($activity_query);
-    if ($stmt) {
-        $stmt->bind_param("s", $other_user_id);
-        $stmt->execute();
-        $activity_result = $stmt->get_result();
-        if ($activity_result->num_rows > 0) {
-            $last_activity = $activity_result->fetch_assoc()['last_activity'];
-            $online_status = (time() - strtotime($last_activity)) < 300;
-        }
-        $stmt->close();
-    }
+    // Get online status using ProfileManager
+    $online_status = $profileManager->isUserOnline($other_user_id);
     
     $profile_pic = !empty(trim($other_user_data['profile_pic']))
         ? $other_user_data['profile_pic']
-        : 'assets/images/default-avatar.png';
-    
-    $current_user_pic = !empty(trim($current_user_data['profile_pic']))
-        ? $current_user_data['profile_pic']
         : 'assets/images/default-avatar.png';
 ?>
 
