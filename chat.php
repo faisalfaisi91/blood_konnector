@@ -645,9 +645,11 @@
                 </div>
             </div>
             <div class="header-actions">
-                <button class="btn btn-sm btn-outline-secondary">
-                    <i class="fas fa-ellipsis-v"></i>
-                </button>
+                <?php if ($current_user_role === 'recipient'): ?>
+                    <button class="btn btn-sm btn-danger" id="lifelineQuick">
+                        <i class="fas fa-hand-holding-heart me-1"></i> Lifeline Request
+                    </button>
+                <?php endif; ?>
             </div>
         </div>
 
@@ -950,6 +952,37 @@
         
         // Start polling
         startPolling();
+
+        // Quick lifeline request hook (recipient side)
+        const lifelineBtn = document.getElementById('lifelineQuick');
+        if (lifelineBtn) {
+            lifelineBtn.addEventListener('click', async () => {
+                const agreed = confirm('Has the donor agreed to provide donation?');
+                if (!agreed) return;
+                const date = prompt('Enter date (YYYY-MM-DD):');
+                const time = prompt('Enter time (HH:MM):');
+                const location = prompt('Enter location/hospital:');
+                if (!date || !time || !location) return alert('Missing details.');
+                const data = new FormData();
+                data.append('action', 'create_request');
+                data.append('preferred_date', date);
+                data.append('preferred_time', time);
+                data.append('location', location);
+                data.append('urgency', 'normal');
+                data.append('donor_id', '<?= htmlspecialchars($other_user_id) ?>');
+                try {
+                    const res = await fetch('assets/lib/lifeline-api.php', { method: 'POST', body: data });
+                    const json = await res.json();
+                    if (json.success) {
+                        alert('Lifeline request logged and donor will be prompted.');
+                    } else {
+                        alert(json.error || 'Failed to create lifeline request.');
+                    }
+                } catch (e) {
+                    alert('Network error creating lifeline request.');
+                }
+            });
+        }
         
         // Focus input when clicking anywhere in the message area
         chatMessages.addEventListener('click', () => {

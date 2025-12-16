@@ -65,6 +65,21 @@
               <li class="position-relative">
                 <a href="contact">Contact</a>
               </li>
+              <?php
+              // Lifeline quick links for logged-in users
+              if (isset($_SESSION['user_id'])) {
+                  if (!isset($profileManager)) {
+                      require_once('assets/lib/ProfileManager.php');
+                      $profileManager = new ProfileManager($conn);
+                  }
+                  if ($profileManager->hasRole('recipient')) {
+                      echo '<li class="position-relative"><a href="lifeline-recipient">Lifeline Recipient</a></li>';
+                  }
+                  if ($profileManager->hasRole('donor')) {
+                      echo '<li class="position-relative"><a href="lifeline-donor">Lifeline Donor</a></li>';
+                  }
+              }
+              ?>
             </ul>
           </div>
           <div class="col-xl-3 col-lg-3 d-none d-xxl-block d-xl-block">
