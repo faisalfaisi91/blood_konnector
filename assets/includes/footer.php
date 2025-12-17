@@ -147,6 +147,31 @@
           <li class="accordion-item">
             <h2><a href="donors">Become A Donor</a></h2>
           </li>
+          <!-- Lifeline mobile accordion (group recipient/donor links) -->
+          <?php if (isset($_SESSION['user_id'])):
+              if (!isset($profileManager)) {
+                  require_once('assets/lib/ProfileManager.php');
+                  $profileManager = new ProfileManager($conn);
+              }
+              $hasRecipient = $profileManager->hasRole('recipient');
+              $hasDonor = $profileManager->hasRole('donor');
+              if ($hasRecipient || $hasDonor): ?>
+            <li class="accordion-item">
+              <h2>
+                <a class="accordion-button collapsed" data-bs-toggle="collapse" href="#mobileLifeline" aria-expanded="false" aria-controls="mobileLifeline">Lifeline</a>
+              </h2>
+              <div id="mobileLifeline" class="accordion-collapse collapse">
+                <div class="accordion-body">
+                  <?php if ($hasRecipient): ?>
+                    <a href="lifeline-recipient">Lifeline Recipient</a><br />
+                  <?php endif; ?>
+                  <?php if ($hasDonor): ?>
+                    <a href="lifeline-donor">Lifeline Donor</a><br />
+                  <?php endif; ?>
+                </div>
+              </div>
+            </li>
+          <?php endif; endif; ?>
           <li class="accordion-item">
             <h2>
                 <?php if (isset($_SESSION['user_id'])): ?>

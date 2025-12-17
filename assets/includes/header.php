@@ -62,24 +62,32 @@
               <!-- <li class="position-relative">
                 <a href="https://blogs.bloodkonnector.com">Blogs and Updates</a>
               </li> -->
+              <?php
+                if (isset($_SESSION['user_id'])) {
+                  if (!isset($profileManager)) {
+                    require_once('assets/lib/ProfileManager.php');
+                    $profileManager = new ProfileManager($conn);
+                  }
+                  $hasRecipient = $profileManager->hasRole('recipient');
+                  $hasDonor = $profileManager->hasRole('donor');
+                  if ($hasRecipient || $hasDonor): ?>
+                    <li class="position-relative dropdown">
+                    <a class="dropdown-toggle" href="#" id="lifelineMenu" role="button" data-bs-toggle="dropdown" aria-expanded="false">Lifeline</a>
+                    <ul class="dropdown-menu" aria-labelledby="lifelineMenu">
+                      <?php if ($hasRecipient): ?>
+                        <li><a class="dropdown-item" href="lifeline-recipient">Lifeline Recipient</a></li>
+                      <?php endif; ?>
+                      <?php if ($hasDonor): ?>
+                        <li><a class="dropdown-item" href="lifeline-donor">Lifeline Donor</a></li>
+                      <?php endif; ?>
+                    </ul>
+                    </li>
+                  <?php endif;
+                }
+              ?>
               <li class="position-relative">
                 <a href="contact">Contact</a>
               </li>
-              <?php
-              // Lifeline quick links for logged-in users
-              if (isset($_SESSION['user_id'])) {
-                  if (!isset($profileManager)) {
-                      require_once('assets/lib/ProfileManager.php');
-                      $profileManager = new ProfileManager($conn);
-                  }
-                  if ($profileManager->hasRole('recipient')) {
-                      echo '<li class="position-relative"><a href="lifeline-recipient">Lifeline Recipient</a></li>';
-                  }
-                  if ($profileManager->hasRole('donor')) {
-                      echo '<li class="position-relative"><a href="lifeline-donor">Lifeline Donor</a></li>';
-                  }
-              }
-              ?>
             </ul>
           </div>
           <div class="col-xl-3 col-lg-3 d-none d-xxl-block d-xl-block">

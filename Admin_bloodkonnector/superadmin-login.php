@@ -25,11 +25,37 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $error = 'Invalid credentials.';
         } else {
             $row = $res->fetch_assoc();
+            // Support legacy MD5 hashes: if stored hash is MD5, verify and rehash to a secure password_hash
             if ((int)$row['is_active'] !== 1) {
                 $error = 'Account disabled.';
-            } elseif (!password_verify($password, $row['password_hash'])) {
-                $error = 'Invalid credentials.';
             } else {
+                $storedHash = $row['password_hash'];
+                $passwordVerified = false;
+
+                // Prefer modern password_verify (bcrypt/argon2) if applicable
+                if (password_verify($password, $storedHash)) {
+                    $passwordVerified = true;
+                    // Rehash if algorithm changed/needs rehash
+                    if (password_needs_rehash($storedHash, PASSWORD_DEFAULT)) {
+                        $newHash = password_hash($password, PASSWORD_DEFAULT);
+                        $uStmt = $conn->prepare("UPDATE super_admins SET password_hash = ? WHERE id = ?");
+                        $uStmt->bind_param("si", $newHash, $row['id']);
+                        $uStmt->execute();
+                        $uStmt->close();
+                    }
+                } elseif (hash_equals($storedHash, md5($password))) {
+                    // Legacy MD5 match - upgrade to secure hash
+                    $passwordVerified = true;
+                    $newHash = password_hash($password, PASSWORD_DEFAULT);
+                    $uStmt = $conn->prepare("UPDATE super_admins SET password_hash = ? WHERE id = ?");
+                    $uStmt->bind_param("si", $newHash, $row['id']);
+                    $uStmt->execute();
+                    $uStmt->close();
+                }
+
+                if (!$passwordVerified) {
+                    $error = 'Invalid credentials.';
+                } else {
                 session_regenerate_id(true);
                 $_SESSION['super_admin_logged_in'] = true;
                 $_SESSION['super_admin_name'] = $row['full_name'] ?: $row['username'];
@@ -39,6 +65,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
         }
         $stmt->close();
+    }
     }
 }
 ?>
@@ -72,7 +99,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 <div>
                     <label class="block text-sm font-medium text-gray-700 mb-1">Password</label>
                     <input type="password" name="password" required class="w-full border rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-red-500">
-                    <p class="text-xs text-gray-500 mt-1">Set env SUPERADMIN_PASS_HASH (bcrypt) or SUPERADMIN_PASS.</p>
                 </div>
                 <button type="submit" class="w-full bg-red-600 text-white py-2 rounded hover:bg-red-700 transition">Sign In</button>
             </form>
