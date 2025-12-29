@@ -84,15 +84,26 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['assign_request'])) {
             if (!$hasReq) {
                 $assignError = "Request #{$reqId} not found.";
             } else {
-                $stmt = $conn->prepare("UPDATE lifeline_confirmations SET donor_id=? WHERE request_id=?");
-                $stmt->bind_param("si", $donorId, $reqId);
-                $stmt->execute();
-                $stmt->close();
-                $stmt2 = $conn->prepare("UPDATE lifeline_requests SET status='pending', responder_timeout_at=DATE_ADD(NOW(), INTERVAL 12 HOUR) WHERE id=?");
-                $stmt2->bind_param("i", $reqId);
-                $stmt2->execute();
-                $stmt2->close();
-                $assignMessage = "Assigned donor to request #{$reqId}.";
+                // Check if request is already confirmed/assigned
+                $checkStmt = $conn->prepare("SELECT lr.status, lc.donor_id FROM lifeline_requests lr JOIN lifeline_confirmations lc ON lc.request_id = lr.id WHERE lr.id = ?");
+                $checkStmt->bind_param("i", $reqId);
+                $checkStmt->execute();
+                $checkResult = $checkStmt->get_result()->fetch_assoc();
+                $checkStmt->close();
+                
+                if ($checkResult && $checkResult['status'] === 'confirmed' && !empty($checkResult['donor_id']) && $checkResult['donor_id'] !== $donorId) {
+                    $assignError = "Request #{$reqId} is already confirmed and assigned to another donor. Cannot reassign.";
+                } else {
+                    $stmt = $conn->prepare("UPDATE lifeline_confirmations SET donor_id=?, donor_response='approve', donor_response_at=NOW() WHERE request_id=?");
+                    $stmt->bind_param("si", $donorId, $reqId);
+                    $stmt->execute();
+                    $stmt->close();
+                    $stmt2 = $conn->prepare("UPDATE lifeline_requests SET status='confirmed', responder_timeout_at=DATE_ADD(NOW(), INTERVAL 12 HOUR) WHERE id=?");
+                    $stmt2->bind_param("i", $reqId);
+                    $stmt2->execute();
+                    $stmt2->close();
+                    $assignMessage = "Assigned donor to request #{$reqId} and marked as confirmed.";
+                }
             }
         }
         $chk->close();

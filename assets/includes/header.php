@@ -114,6 +114,36 @@
                   }
                   // Display profile switcher
                   echo $profileManager->getProfileSwitcherHTML();
+                  
+                  // Check if user has lifeline roles (donor or recipient)
+                  $hasRecipient = $profileManager->hasRole('recipient');
+                  $hasDonor = $profileManager->hasRole('donor');
+                  if ($hasRecipient || $hasDonor):
+              ?>
+                  <!-- Notification Bell Icon -->
+                  <div class="dropdown notification-dropdown">
+                      <button class="notification-btn position-relative" type="button" id="notificationBell" data-bs-toggle="dropdown" aria-expanded="false">
+                          <i class="fa-solid fa-bell"></i>
+                          <span class="notification-badge badge bg-danger" id="notificationBadge" style="display: none;">0</span>
+                      </button>
+                      <div class="dropdown-menu dropdown-menu-end notification-dropdown-menu" id="notificationDropdown" style="min-width: 350px; max-width: 400px; max-height: 500px; overflow-y: auto;">
+                          <div class="d-flex justify-content-between align-items-center p-3 border-bottom">
+                              <h6 class="mb-0"><strong>Notifications</strong></h6>
+                              <button class="btn btn-sm btn-link text-primary p-0" onclick="markAllNotificationsRead()">Mark all as read</button>
+                          </div>
+                          <div id="notificationList" class="notification-list">
+                              <div class="text-center p-4 text-muted">
+                                  <i class="fas fa-spinner fa-spin fa-2x mb-2"></i>
+                                  <p class="mb-0">Loading notifications...</p>
+                              </div>
+                          </div>
+                          <div class="p-2 border-top text-center">
+                              <a href="<?php echo $hasRecipient ? 'lifeline-recipient' : 'lifeline-donor'; ?>" class="btn btn-sm btn-outline-primary">View All</a>
+                          </div>
+                      </div>
+                  </div>
+              <?php 
+                  endif;
               }
               ?>
 
@@ -139,10 +169,63 @@
               </div>
             </div>
           </div>
+          
+          <!-- Load notification bell script if user is logged in and has lifeline role -->
+          <?php 
+          if (isset($_SESSION['user_id'])) {
+              if (!isset($profileManager)) {
+                  require_once('assets/lib/ProfileManager.php');
+                  $profileManager = new ProfileManager($conn);
+              }
+              $hasRecipient = $profileManager->hasRole('recipient');
+              $hasDonor = $profileManager->hasRole('donor');
+              if ($hasRecipient || $hasDonor):
+          ?>
+              <script src="assets/js/notification-bell.js"></script>
+          <?php 
+              endif;
+          }
+          ?>
 
           <!-- mobile menu bar -->
           <div class="col-lg-10 col-md-8 col-6 d-block d-xxl-none d-xl-none">
             <div class="d-flex align-items-center gap-2 justify-content-end">
+              <?php 
+              if (isset($_SESSION['user_id'])) {
+                  if (!isset($profileManager)) {
+                      require_once('assets/lib/ProfileManager.php');
+                      $profileManager = new ProfileManager($conn);
+                  }
+                  $hasRecipient = $profileManager->hasRole('recipient');
+                  $hasDonor = $profileManager->hasRole('donor');
+                  if ($hasRecipient || $hasDonor):
+              ?>
+                  <!-- Notification Bell Icon (Mobile) -->
+                  <div class="dropdown notification-dropdown">
+                      <button class="notification-btn position-relative" type="button" id="notificationBellMobile" data-bs-toggle="dropdown" aria-expanded="false">
+                          <i class="fa-solid fa-bell"></i>
+                          <span class="notification-badge badge bg-danger" id="notificationBadgeMobile" style="display: none;">0</span>
+                      </button>
+                      <div class="dropdown-menu dropdown-menu-end notification-dropdown-menu" id="notificationDropdownMobile" style="min-width: 300px; max-width: 90vw; max-height: 500px; overflow-y: auto;">
+                          <div class="d-flex justify-content-between align-items-center p-3 border-bottom">
+                              <h6 class="mb-0"><strong>Notifications</strong></h6>
+                              <button class="btn btn-sm btn-link text-primary p-0" onclick="markAllNotificationsRead()">Mark all as read</button>
+                          </div>
+                          <div id="notificationListMobile" class="notification-list">
+                              <div class="text-center p-4 text-muted">
+                                  <i class="fas fa-spinner fa-spin fa-2x mb-2"></i>
+                                  <p class="mb-0">Loading notifications...</p>
+                              </div>
+                          </div>
+                          <div class="p-2 border-top text-center">
+                              <a href="<?php echo $hasRecipient ? 'lifeline-recipient' : 'lifeline-donor'; ?>" class="btn btn-sm btn-outline-primary">View All</a>
+                          </div>
+                      </div>
+                  </div>
+              <?php 
+                  endif;
+              }
+              ?>
               <div class="dropdown dropdown_search">
                 <button class="search-btn " data-bs-toggle="dropdown" aria-expanded="true"><i
                     class="fa-solid fa-magnifying-glass"></i></button>

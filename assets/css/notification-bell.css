@@ -1,0 +1,181 @@
+/* Notification Bell Icon Styles */
+.notification-dropdown {
+    position: relative;
+    margin: 0 8px;
+}
+
+.notification-btn {
+    background: transparent;
+    border: none;
+    color: #333;
+    font-size: 20px;
+    padding: 0px 8px;
+    cursor: pointer;
+    position: relative;
+    transition: all 0.3s ease;
+    border-radius: 50%;
+    width: 40px;
+    height: 40px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.notification-btn:hover {
+    background-color: #f0f0f0;
+    color: #EA062B;
+}
+
+.notification-btn:focus {
+    outline: none;
+    box-shadow: 0 0 0 3px rgba(234, 6, 43, 0.1);
+}
+
+.notification-badge {
+    width: 0px;
+    padding: 3px 6px !important;
+    position: absolute;
+    top: 4px;
+    right: 4px;
+    font-size: 10px;
+    border-radius: 10px;
+    min-width: 18px;
+    text-align: center;
+    font-weight: 600;
+    animation: pulse 2s infinite;
+}
+
+@keyframes pulse {
+    0%, 100% {
+        transform: scale(1);
+    }
+    50% {
+        transform: scale(1.1);
+    }
+}
+
+/* Notification Dropdown Menu */
+.notification-dropdown-menu {
+    padding: 0;
+    border-radius: 8px;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.15);
+    border: 1px solid #e0e0e0;
+}
+
+.notification-list {
+    max-height: 400px;
+    overflow-y: auto;
+}
+
+.notification-item-header {
+    padding: 12px 16px;
+    border-bottom: 1px solid #f0f0f0;
+    transition: background-color 0.2s ease;
+    cursor: pointer;
+    position: relative;
+}
+
+.notification-item-header:hover {
+    background-color: #f8f9fa;
+}
+
+.notification-item-header.unread {
+    background-color: #e3f2fd;
+    border-left: 3px solid #2196F3;
+    font-weight: 500;
+}
+
+.notification-item-header .notification-content {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+}
+
+.notification-item-header .notification-icon {
+    font-size: 18px;
+    margin-top: 2px;
+    flex-shrink: 0;
+}
+
+.notification-item-header .notification-icon.text-danger {
+    color: #dc3545;
+}
+
+.notification-item-header .notification-icon.text-success {
+    color: #28a745;
+}
+
+.notification-item-header .notification-text {
+    flex: 1;
+    min-width: 0;
+}
+
+.notification-item-header .notification-text .notification-title {
+    font-weight: 600;
+    font-size: 14px;
+    color: #333;
+    margin-bottom: 4px;
+}
+
+.notification-item-header .notification-text .notification-message {
+    font-size: 13px;
+    color: #666;
+    margin-bottom: 4px;
+    line-height: 1.4;
+}
+
+.notification-item-header .notification-text .notification-time {
+    font-size: 11px;
+    color: #999;
+}
+
+.notification-item-header .notification-actions {
+    display: flex;
+    gap: 4px;
+    margin-top: 8px;
+}
+
+.notification-item-header .notification-actions .btn {
+    font-size: 11px;
+    padding: 4px 8px;
+}
+
+.notification-empty {
+    padding: 40px 20px;
+    text-align: center;
+    color: #999;
+}
+
+.notification-empty i {
+    font-size: 48px;
+    margin-bottom: 12px;
+    opacity: 0.5;
+}
+
+/* Scrollbar styling for notification list */
+.notification-list::-webkit-scrollbar {
+    width: 6px;
+}
+
+.notification-list::-webkit-scrollbar-track {
+    background: #f1f1f1;
+    border-radius: 10px;
+}
+
+.notification-list::-webkit-scrollbar-thumb {
+    background: #888;
+    border-radius: 10px;
+}
+
+.notification-list::-webkit-scrollbar-thumb:hover {
+    background: #555;
+}
+
+/* Mobile responsive */
+@media (max-width: 991px) {
+    .notification-dropdown-menu {
+        min-width: 300px !important;
+        max-width: 90vw !important;
+    }
+}
+

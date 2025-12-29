@@ -153,6 +153,22 @@
     $profile_pic = !empty(trim($other_user_data['profile_pic']))
         ? $other_user_data['profile_pic']
         : 'assets/images/default-avatar.png';
+    
+    // Get recipient profile data for automated lifeline requests
+    $recipient_profile_data = null;
+    if ($current_user_role === 'recipient') {
+        $recipient_query = "SELECT blood_type, location, hospital_name FROM recipients WHERE user_id = ? LIMIT 1";
+        $recipient_stmt = $conn->prepare($recipient_query);
+        if ($recipient_stmt) {
+            $recipient_stmt->bind_param("s", $userId);
+            $recipient_stmt->execute();
+            $recipient_result = $recipient_stmt->get_result();
+            if ($recipient_result && $recipient_result->num_rows > 0) {
+                $recipient_profile_data = $recipient_result->fetch_assoc();
+            }
+            $recipient_stmt->close();
+        }
+    }
 ?>
 
 <!DOCTYPE html>
@@ -953,33 +969,98 @@
         // Start polling
         startPolling();
 
-        // Quick lifeline request hook (recipient side)
+        // Quick lifeline request hook (recipient side) - Automated
         const lifelineBtn = document.getElementById('lifelineQuick');
         if (lifelineBtn) {
             lifelineBtn.addEventListener('click', async () => {
-                const agreed = confirm('Has the donor agreed to provide donation?');
-                if (!agreed) return;
-                const date = prompt('Enter date (YYYY-MM-DD):');
-                const time = prompt('Enter time (HH:MM):');
-                const location = prompt('Enter location/hospital:');
-                if (!date || !time || !location) return alert('Missing details.');
-                const data = new FormData();
-                data.append('action', 'create_request');
-                data.append('preferred_date', date);
-                data.append('preferred_time', time);
-                data.append('location', location);
-                data.append('urgency', 'normal');
-                data.append('donor_id', '<?= htmlspecialchars($other_user_id) ?>');
+                // Disable button to prevent multiple clicks
+                lifelineBtn.disabled = true;
+                lifelineBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i> Creating Request...';
+                
                 try {
+                    // Get recipient profile data from PHP
+                    const recipientData = <?= json_encode($recipient_profile_data); ?>;
+                    
+                    if (!recipientData) {
+                        alert('Recipient profile data not found. Please update your profile first.');
+                        lifelineBtn.disabled = false;
+                        lifelineBtn.innerHTML = '<i class="fas fa-hand-holding-heart me-1"></i> Lifeline Request';
+                        return;
+                    }
+                    
+                    // Set default date (tomorrow)
+                    const tomorrow = new Date();
+                    tomorrow.setDate(tomorrow.getDate() + 1);
+                    const defaultDate = tomorrow.toISOString().split('T')[0];
+                    
+                    // Set default time (10:00 AM)
+                    const defaultTime = '10:00';
+                    
+                    // Use recipient's location/hospital, fallback to location
+                    const location = recipientData.hospital_name || recipientData.location || 'Hospital';
+                    
+                    // Extract city from location or use location as city
+                    // Try to get city from location (assuming format might be "City, Address" or just "City")
+                    let city = recipientData.location || '';
+                    // If location contains comma, take the first part as city
+                    if (city.includes(',')) {
+                        city = city.split(',')[0].trim();
+                    }
+                    // If no location, use a default or prompt
+                    if (!city) {
+                        city = prompt('Please enter your city name:');
+                        if (!city) {
+                            alert('City is required to match with nearby donors.');
+                            lifelineBtn.disabled = false;
+                            lifelineBtn.innerHTML = '<i class="fas fa-hand-holding-heart me-1"></i> Lifeline Request';
+                            return;
+                        }
+                    }
+                    
+                    // Get blood type from recipient profile
+                    const bloodType = recipientData.blood_type || '';
+                    
+                    // Create request automatically
+                    const data = new FormData();
+                    data.append('action', 'create_request');
+                    data.append('preferred_date', defaultDate);
+                    data.append('preferred_time', defaultTime);
+                    data.append('city', city);
+                    data.append('location', location);
+                    data.append('urgency', 'high'); // Set as high urgency for automated requests
+                    data.append('note', 'Automated lifeline request created from chat');
+                    if (bloodType) {
+                        data.append('blood_type', bloodType);
+                    }
+                    // Don't set donor_id - let the API auto-match donors
+                    
                     const res = await fetch('assets/lib/lifeline-api.php', { method: 'POST', body: data });
                     const json = await res.json();
+                    
                     if (json.success) {
-                        alert('Lifeline request logged and donor will be prompted.');
+                        let message = 'Lifeline request created successfully!';
+                        if (json.matching_donors_notified > 0) {
+                            message += ` ${json.matching_donors_notified} matching donor(s) have been notified.`;
+                        } else if (json.donor_assigned) {
+                            message += ' A donor has been assigned to your request.';
+                        } else {
+                            message += ' The system will find and notify matching donors.';
+                        }
+                        alert(message);
+                        // Optionally reload the page to show the new request
+                        setTimeout(() => {
+                            window.location.href = 'lifeline-recipient.php';
+                        }, 1500);
                     } else {
                         alert(json.error || 'Failed to create lifeline request.');
+                        lifelineBtn.disabled = false;
+                        lifelineBtn.innerHTML = '<i class="fas fa-hand-holding-heart me-1"></i> Lifeline Request';
                     }
                 } catch (e) {
-                    alert('Network error creating lifeline request.');
+                    console.error('Error creating lifeline request:', e);
+                    alert('Network error creating lifeline request. Please try again.');
+                    lifelineBtn.disabled = false;
+                    lifelineBtn.innerHTML = '<i class="fas fa-hand-holding-heart me-1"></i> Lifeline Request';
                 }
             });
         }
