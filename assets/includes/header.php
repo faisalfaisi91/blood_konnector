@@ -72,13 +72,13 @@
                   $hasDonor = $profileManager->hasRole('donor');
                   if ($hasRecipient || $hasDonor): ?>
                     <li class="position-relative dropdown">
-                    <a class="dropdown-toggle" href="#" id="lifelineMenu" role="button" data-bs-toggle="dropdown" aria-expanded="false">Lifeline</a>
-                    <ul class="dropdown-menu" aria-labelledby="lifelineMenu">
+                    <a class="dropdown-toggle" href="#" id="emergencyMenu" role="button" data-bs-toggle="dropdown" aria-expanded="false">Emergency</a>
+                    <ul class="dropdown-menu" aria-labelledby="emergencyMenu">
                       <?php if ($hasRecipient): ?>
-                        <li><a class="dropdown-item" href="lifeline-recipient">Lifeline Recipient</a></li>
+                        <li><a class="dropdown-item" href="emergency-recipient">Emergency Recipient</a></li>
                       <?php endif; ?>
                       <?php if ($hasDonor): ?>
-                        <li><a class="dropdown-item" href="lifeline-donor">Lifeline Donor</a></li>
+                        <li><a class="dropdown-item" href="emergency-donor">Emergency Donor</a></li>
                       <?php endif; ?>
                     </ul>
                     </li>
@@ -115,7 +115,7 @@
                   // Display profile switcher
                   echo $profileManager->getProfileSwitcherHTML();
                   
-                  // Check if user has lifeline roles (donor or recipient)
+                  // Check if user has emergency roles (donor or recipient)
                   $hasRecipient = $profileManager->hasRole('recipient');
                   $hasDonor = $profileManager->hasRole('donor');
                   if ($hasRecipient || $hasDonor):
@@ -138,7 +138,7 @@
                               </div>
                           </div>
                           <div class="p-2 border-top text-center">
-                              <a href="<?php echo $hasRecipient ? 'lifeline-recipient' : 'lifeline-donor'; ?>" class="btn btn-sm btn-outline-primary">View All</a>
+                              <a href="<?php echo $hasRecipient ? 'emergency-recipient' : 'emergency-donor'; ?>" class="btn btn-sm btn-outline-primary">View All</a>
                           </div>
                       </div>
                   </div>
@@ -170,7 +170,7 @@
             </div>
           </div>
           
-          <!-- Load notification bell script if user is logged in and has lifeline role -->
+          <!-- Load notification bell script if user is logged in and has emergency role -->
           <?php 
           if (isset($_SESSION['user_id'])) {
               if (!isset($profileManager)) {
@@ -218,7 +218,7 @@
                               </div>
                           </div>
                           <div class="p-2 border-top text-center">
-                              <a href="<?php echo $hasRecipient ? 'lifeline-recipient' : 'lifeline-donor'; ?>" class="btn btn-sm btn-outline-primary">View All</a>
+                              <a href="<?php echo $hasRecipient ? 'emergency-recipient' : 'emergency-donor'; ?>" class="btn btn-sm btn-outline-primary">View All</a>
                           </div>
                       </div>
                   </div>

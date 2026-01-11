@@ -40,7 +40,7 @@ function initNotificationBell() {
 }
 
 function loadNotifications() {
-    fetch('assets/lib/lifeline-api.php?action=get_notifications')
+    fetch('assets/lib/emergency-api.php?action=get_notifications')
         .then(response => response.json())
         .then(data => {
             if (data.success) {
@@ -98,15 +98,15 @@ function renderNotifications(notifications) {
         const requestId = payload.request_id || notif.request_id || null;
         
         let iconClass = 'fa-heartbeat text-danger';
-        let title = 'New Lifeline Request';
+        let title = 'New Emergency Request';
         let message = '';
         let actionUrl = '';
         let actionText = '';
         
-        if (notif.template_key === 'lifeline_new_request') {
+        if (notif.template_key === 'emergency_new_request') {
             iconClass = 'fa-heartbeat text-danger';
-            title = 'New Lifeline Request';
-            message = `A new lifeline request matches your profile`;
+            title = 'New Emergency Request';
+            message = `A new emergency request matches your profile`;
             if (notif.blood_type) {
                 message += ` (Blood Type: ${escapeHtml(notif.blood_type)}`;
                 if (notif.city) {
@@ -115,20 +115,20 @@ function renderNotifications(notifications) {
                 message += ')';
             }
             if (requestId) {
-                actionUrl = 'lifeline-donor.php#request-' + requestId;
+                actionUrl = 'emergency-donor.php#request-' + requestId;
                 actionText = 'View Request';
             }
-        } else if (notif.template_key === 'lifeline_donor_approved') {
+        } else if (notif.template_key === 'emergency_donor_approved') {
             iconClass = 'fa-check-circle text-success';
             title = 'Donor Approved Your Request';
             if (notif.donor_first || notif.donor_last) {
                 const donorName = escapeHtml((notif.donor_first || '') + ' ' + (notif.donor_last || '')).trim();
-                message = `${donorName} has approved your lifeline request.`;
+                message = `${donorName} has approved your emergency request.`;
             } else {
-                message = 'A donor has approved your lifeline request.';
+                message = 'A donor has approved your emergency request.';
             }
             if (requestId) {
-                actionUrl = 'lifeline-recipient.php#request-' + requestId;
+                actionUrl = 'emergency-recipient.php#request-' + requestId;
                 actionText = 'View Request';
             }
         }
@@ -167,7 +167,7 @@ function markNotificationRead(notificationId, event) {
         event.stopPropagation();
     }
     
-    fetch('assets/lib/lifeline-api.php', {
+    fetch('assets/lib/emergency-api.php', {
         method: 'POST',
         headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
         body: `action=mark_notification_read&notification_id=${notificationId}`
@@ -188,7 +188,7 @@ function markNotificationRead(notificationId, event) {
 }
 
 function markAllNotificationsRead() {
-    fetch('assets/lib/lifeline-api.php', {
+    fetch('assets/lib/emergency-api.php', {
         method: 'POST',
         headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
         body: 'action=mark_all_notifications_read'

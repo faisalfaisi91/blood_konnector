@@ -147,7 +147,7 @@
           <li class="accordion-item">
             <h2><a href="donors">Become A Donor</a></h2>
           </li>
-          <!-- Lifeline mobile accordion (group recipient/donor links) -->
+          <!-- Emergency Panel mobile accordion (group recipient/donor links) -->
           <?php if (isset($_SESSION['user_id'])):
               if (!isset($profileManager)) {
                   require_once('assets/lib/ProfileManager.php');
@@ -158,15 +158,15 @@
               if ($hasRecipient || $hasDonor): ?>
             <li class="accordion-item">
               <h2>
-                <a class="accordion-button collapsed" data-bs-toggle="collapse" href="#mobileLifeline" aria-expanded="false" aria-controls="mobileLifeline">Lifeline</a>
+                <a class="accordion-button collapsed" data-bs-toggle="collapse" href="#mobileEmergency" aria-expanded="false" aria-controls="mobileEmergency">Emergency Panel</a>
               </h2>
-              <div id="mobileLifeline" class="accordion-collapse collapse">
+              <div id="mobileEmergency" class="accordion-collapse collapse">
                 <div class="accordion-body">
                   <?php if ($hasRecipient): ?>
-                    <a href="lifeline-recipient">Lifeline Recipient</a><br />
+                    <a href="emergency-recipient">Emergency Recipient</a><br />
                   <?php endif; ?>
                   <?php if ($hasDonor): ?>
-                    <a href="lifeline-donor">Lifeline Donor</a><br />
+                    <a href="emergency-donor">Emergency Donor</a><br />
                   <?php endif; ?>
                 </div>
               </div>

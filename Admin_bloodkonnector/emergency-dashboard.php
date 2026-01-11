@@ -1,10 +1,11 @@
 <?php
-// Backwards-compatible redirect: legacy superadmin URL -> emergency dashboard
-header('Location: emergency-dashboard.php');
-exit();
-
 session_start();
 require_once __DIR__ . '/openconn.php';
+
+if (empty($_SESSION['super_admin_logged_in'])) {
+    header('Location: superadmin-login.php');
+    exit();
+}
 
 $adminName = $_SESSION['super_admin_name'] ?? 'Super Admin';
 
@@ -34,17 +35,7 @@ if (isset($_GET['export']) && $_GET['export'] === 'csv') {
     header('Content-Disposition: attachment; filename="emergency_requests.csv"');
     $out = fopen('php://output', 'w');
     fputcsv($out, ['ID','Recipient','Donor','Status','Date','Time','Urgency','Location']);
-    $exp = $conn->query("
-        SELECT lr.id, lr.status, lr.preferred_date, lr.preferred_time, lr.location, lr.urgency,
-               u1.first_name AS recipient_first, u1.last_name AS recipient_last,
-               u2.first_name AS donor_first, u2.last_name AS donor_last
-        FROM emergency_requests lr
-        LEFT JOIN emergency_confirmations lc ON lc.request_id = lr.id
-        LEFT JOIN users u1 ON u1.user_id = lr.recipient_id
-        LEFT JOIN users u2 ON u2.user_id = lc.donor_id
-        {$where}
-        ORDER BY lr.updated_at DESC
-    ");
+    $exp = $conn->query("\n        SELECT lr.id, lr.status, lr.preferred_date, lr.preferred_time, lr.location, lr.urgency,\n               u1.first_name AS recipient_first, u1.last_name AS recipient_last,\n               u2.first_name AS donor_first, u2.last_name AS donor_last\n        FROM emergency_requests lr\n        LEFT JOIN emergency_confirmations lc ON lc.request_id = lr.id\n        LEFT JOIN users u1 ON u1.user_id = lr.recipient_id\n        LEFT JOIN users u2 ON u2.user_id = lc.donor_id\n        {$where}\n        ORDER BY lr.updated_at DESC\n    ");
     while ($r = $exp->fetch_assoc()) {
         fputcsv($out, [
             $r['id'],
@@ -122,7 +113,7 @@ $metrics = [
     'feedback' => 0,
 ];
 
-$counts = $conn->query("SELECT status, COUNT(*) as total FROM lifeline_requests GROUP BY status");
+$counts = $conn->query("SELECT status, COUNT(*) as total FROM emergency_requests GROUP BY status");
 if ($counts) {
     while ($row = $counts->fetch_assoc()) {
         $metrics[$row['status']] = (int)$row['total'];
@@ -130,28 +121,17 @@ if ($counts) {
     }
 }
 
-$linksRes = $conn->query("SELECT COUNT(*) as total FROM lifeline_links");
+$linksRes = $conn->query("SELECT COUNT(*) as total FROM emergency_links");
 if ($linksRes && $row = $linksRes->fetch_assoc()) {
     $metrics['links'] = (int)$row['total'];
 }
 
-$feedbackRes = $conn->query("SELECT COUNT(*) as total FROM lifeline_feedback");
+$feedbackRes = $conn->query("SELECT COUNT(*) as total FROM emergency_feedback");
 if ($feedbackRes && $row = $feedbackRes->fetch_assoc()) {
     $metrics['feedback'] = (int)$row['total'];
 }
 
-$recent = $conn->query("
-    SELECT lr.id, lr.status, lr.preferred_date, lr.preferred_time, lr.location, lr.urgency,
-           u1.first_name AS recipient_first, u1.last_name AS recipient_last,
-           u2.first_name AS donor_first, u2.last_name AS donor_last
-    FROM lifeline_requests lr
-    LEFT JOIN lifeline_confirmations lc ON lc.request_id = lr.id
-    LEFT JOIN users u1 ON u1.user_id = lr.recipient_id
-    LEFT JOIN users u2 ON u2.user_id = lc.donor_id
-    {$where}
-    ORDER BY lr.updated_at DESC
-    LIMIT 30
-");
+$recent = $conn->query("\n    SELECT lr.id, lr.status, lr.preferred_date, lr.preferred_time, lr.location, lr.urgency,\n           u1.first_name AS recipient_first, u1.last_name AS recipient_last,\n           u2.first_name AS donor_first, u2.last_name AS donor_last\n    FROM emergency_requests lr\n    LEFT JOIN emergency_confirmations lc ON lc.request_id = lr.id\n    LEFT JOIN users u1 ON u1.user_id = lr.recipient_id\n    LEFT JOIN users u2 ON u2.user_id = lc.donor_id\n    {$where}\n    ORDER BY lr.updated_at DESC\n    LIMIT 30\n");
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -291,4 +271,3 @@ $recent = $conn->query("
     </div>
 </body>
 </html>
-

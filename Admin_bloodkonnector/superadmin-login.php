@@ -4,7 +4,7 @@ require_once __DIR__ . '/../config.php';
 require_once __DIR__ . '/openconn.php';
 
 if (isset($_SESSION['super_admin_logged_in']) && $_SESSION['super_admin_logged_in'] === true) {
-    header('Location: lifeline-dashboard.php');
+    header('Location: emergency-dashboard.php');
     exit();
 }
 
@@ -60,7 +60,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $_SESSION['super_admin_logged_in'] = true;
                 $_SESSION['super_admin_name'] = $row['full_name'] ?: $row['username'];
                 $_SESSION['super_admin_id'] = (int)$row['id'];
-                header('Location: lifeline-dashboard.php');
+                header('Location: emergency-dashboard.php');
                 exit();
             }
         }
@@ -75,14 +75,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Super Admin Login - Lifeline Panel</title>
+    <title>Super Admin Login - Emergency Panel</title>
     <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
 </head>
 <body class="bg-gray-100 min-h-screen flex items-center justify-center p-4">
     <div class="bg-white shadow-lg rounded-xl w-full max-w-md">
         <div class="bg-gradient-to-r from-red-600 to-red-700 text-white px-6 py-4 rounded-t-xl">
-            <h1 class="text-xl font-semibold">Lifeline Super Admin</h1>
+            <h1 class="text-xl font-semibold">Emergency Super Admin</h1>
             <p class="text-sm text-red-100">Restricted access</p>
         </div>
         <div class="p-6 space-y-4">

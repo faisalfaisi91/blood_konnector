@@ -154,7 +154,7 @@
         ? $other_user_data['profile_pic']
         : 'assets/images/default-avatar.png';
     
-    // Get recipient profile data for automated lifeline requests
+    // Get recipient profile data for automated emergency requests
     $recipient_profile_data = null;
     if ($current_user_role === 'recipient') {
         $recipient_query = "SELECT blood_type, location, hospital_name FROM recipients WHERE user_id = ? LIMIT 1";
@@ -662,8 +662,8 @@
             </div>
             <div class="header-actions">
                 <?php if ($current_user_role === 'recipient'): ?>
-                    <button class="btn btn-sm btn-danger" id="lifelineQuick">
-                        <i class="fas fa-hand-holding-heart me-1"></i> Lifeline Request
+                    <button class="btn btn-sm btn-danger" id="emergencyQuick">
+                        <i class="fas fa-hand-holding-heart me-1"></i> Emergency Request
                     </button>
                 <?php endif; ?>
             </div>
@@ -969,22 +969,22 @@
         // Start polling
         startPolling();
 
-        // Quick lifeline request hook (recipient side) - Automated
-        const lifelineBtn = document.getElementById('lifelineQuick');
-        if (lifelineBtn) {
-            lifelineBtn.addEventListener('click', async () => {
+        // Quick emergency request hook (recipient side) - Automated
+        const emergencyBtn = document.getElementById('emergencyQuick');
+        if (emergencyBtn) {
+            emergencyBtn.addEventListener('click', async () => {
                 // Disable button to prevent multiple clicks
-                lifelineBtn.disabled = true;
-                lifelineBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i> Creating Request...';
+                emergencyBtn.disabled = true;
+                emergencyBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i> Creating Request...';
                 
                 try {
-                    // Get recipient profile data from PHP
+                                // Get recipient profile data from PHP for automated emergency requests
                     const recipientData = <?= json_encode($recipient_profile_data); ?>;
                     
                     if (!recipientData) {
                         alert('Recipient profile data not found. Please update your profile first.');
-                        lifelineBtn.disabled = false;
-                        lifelineBtn.innerHTML = '<i class="fas fa-hand-holding-heart me-1"></i> Lifeline Request';
+                        emergencyBtn.disabled = false;
+                        emergencyBtn.innerHTML = '<i class="fas fa-hand-holding-heart me-1"></i> Emergency Request';
                         return;
                     }
                     
@@ -1011,8 +1011,8 @@
                         city = prompt('Please enter your city name:');
                         if (!city) {
                             alert('City is required to match with nearby donors.');
-                            lifelineBtn.disabled = false;
-                            lifelineBtn.innerHTML = '<i class="fas fa-hand-holding-heart me-1"></i> Lifeline Request';
+                            emergencyBtn.disabled = false;
+                            emergencyBtn.innerHTML = '<i class="fas fa-hand-holding-heart me-1"></i> Emergency Request';
                             return;
                         }
                     }
@@ -1028,17 +1028,17 @@
                     data.append('city', city);
                     data.append('location', location);
                     data.append('urgency', 'high'); // Set as high urgency for automated requests
-                    data.append('note', 'Automated lifeline request created from chat');
+                    data.append('note', 'Automated emergency request created from chat');
                     if (bloodType) {
                         data.append('blood_type', bloodType);
                     }
                     // Don't set donor_id - let the API auto-match donors
                     
-                    const res = await fetch('assets/lib/lifeline-api.php', { method: 'POST', body: data });
+                    const res = await fetch('assets/lib/emergency-api.php', { method: 'POST', body: data });
                     const json = await res.json();
                     
                     if (json.success) {
-                        let message = 'Lifeline request created successfully!';
+                        let message = 'Emergency request created successfully!';
                         if (json.matching_donors_notified > 0) {
                             message += ` ${json.matching_donors_notified} matching donor(s) have been notified.`;
                         } else if (json.donor_assigned) {
@@ -1049,18 +1049,18 @@
                         alert(message);
                         // Optionally reload the page to show the new request
                         setTimeout(() => {
-                            window.location.href = 'lifeline-recipient.php';
+                            window.location.href = 'emergency-recipient.php';
                         }, 1500);
                     } else {
-                        alert(json.error || 'Failed to create lifeline request.');
-                        lifelineBtn.disabled = false;
-                        lifelineBtn.innerHTML = '<i class="fas fa-hand-holding-heart me-1"></i> Lifeline Request';
+                        alert(json.error || 'Failed to create emergency request.');
+                        emergencyBtn.disabled = false;
+                        emergencyBtn.innerHTML = '<i class="fas fa-hand-holding-heart me-1"></i> Emergency Request';
                     }
                 } catch (e) {
-                    console.error('Error creating lifeline request:', e);
-                    alert('Network error creating lifeline request. Please try again.');
-                    lifelineBtn.disabled = false;
-                    lifelineBtn.innerHTML = '<i class="fas fa-hand-holding-heart me-1"></i> Lifeline Request';
+                    console.error('Error creating emergency request:', e);
+                    alert('Network error creating emergency request. Please try again.');
+                    emergencyBtn.disabled = false;
+                    emergencyBtn.innerHTML = '<i class="fas fa-hand-holding-heart me-1"></i> Emergency Request';
                 }
             });
         }

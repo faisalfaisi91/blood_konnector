@@ -1,8 +1,5 @@
 <?php
-// Backwards-compatible redirect: legacy URL -> new Emergency page
-header('Location: emergency-donor.php');
-exit();
-
+// Converted from the previous donor page and updated to Emergency naming
 session_start();
 require_once __DIR__ . '/assets/lib/openconn.php';
 require_once __DIR__ . '/assets/lib/ProfileManager.php';
@@ -13,15 +10,7 @@ $userId = $_SESSION['user_id'];
 
 // Fetch emergency notifications for this donor
 $notifications = [];
-$notifStmt = $conn->prepare("
-    SELECT ln.*
-    FROM emergency_notifications ln
-    WHERE ln.user_id = ?
-      AND ln.channel = 'in_app'
-    AND ln.template_key IN ('emergency_new_request', 'emergency_donor_approved')
-    ORDER BY ln.created_at DESC
-    LIMIT 20
-");
+$notifStmt = $conn->prepare("\n    SELECT ln.*\n    FROM emergency_notifications ln\n    WHERE ln.user_id = ?\n      AND ln.channel = 'in_app'\n      AND ln.template_key IN ('emergency_new_request', 'emergency_donor_approved')\n    ORDER BY ln.created_at DESC\n    LIMIT 20\n");
 $notifStmt->bind_param("s", $userId);
 $notifStmt->execute();
 $notifResult = $notifStmt->get_result();
@@ -32,10 +21,7 @@ while ($row = $notifResult->fetch_assoc()) {
     
     // Fetch request details if available
     if ($requestId) {
-        $reqStmt = $conn->prepare("SELECT lr.id, lr.preferred_date, lr.preferred_time, lr.location, lr.blood_type, lr.city, u.first_name AS recipient_first, u.last_name AS recipient_last
-                                   FROM emergency_requests lr
-                                   LEFT JOIN users u ON u.user_id = lr.recipient_id
-                                   WHERE lr.id = ? LIMIT 1");
+        $reqStmt = $conn->prepare("SELECT lr.id, lr.preferred_date, lr.preferred_time, lr.location, lr.blood_type, lr.city, u.first_name AS recipient_first, u.last_name AS recipient_last\n                                   FROM emergency_requests lr\n                                   LEFT JOIN users u ON u.user_id = lr.recipient_id\n                                   WHERE lr.id = ? LIMIT 1");
         $reqStmt->bind_param("i", $requestId);
         $reqStmt->execute();
         $reqResult = $reqStmt->get_result();
@@ -78,16 +64,7 @@ $donorLocation = $donorInfo['location'] ?? '';
 
 // Fetch assigned requests (where donor is already assigned)
 $assignedRequests = [];
-$stmt = $conn->prepare("
-    SELECT lr.*, lc.scheduled_at, lc.reschedule_payload, lc.donor_response,
-           u.first_name AS recipient_first, u.last_name AS recipient_last
-    FROM emergency_requests lr
-    JOIN emergency_confirmations lc ON lc.request_id = lr.id
-    JOIN users u ON u.user_id = lr.recipient_id
-    WHERE lc.donor_id = ?
-    ORDER BY lr.created_at DESC
-    LIMIT 30
-");
+$stmt = $conn->prepare("\n    SELECT lr.*, lc.scheduled_at, lc.reschedule_payload, lc.donor_response,\n           u.first_name AS recipient_first, u.last_name AS recipient_last\n    FROM emergency_requests lr\n    JOIN emergency_confirmations lc ON lc.request_id = lr.id\n    JOIN users u ON u.user_id = lr.recipient_id\n    WHERE lc.donor_id = ?\n    ORDER BY lr.created_at DESC\n    LIMIT 30\n");
 $stmt->bind_param("s", $userId);
 $stmt->execute();
 $res = $stmt->get_result();
@@ -112,55 +89,15 @@ if (!empty($donorBloodType)) {
     
     if ($hasBloodType && $hasCity) {
         // Match by blood_type and city from request table
-        $availableStmt = $conn->prepare("
-            SELECT lr.*, lc.scheduled_at, lc.reschedule_payload, lc.donor_response, lc.donor_id,
-                   u.first_name AS recipient_first, u.last_name AS recipient_last
-            FROM emergency_requests lr
-            LEFT JOIN emergency_confirmations lc ON lc.request_id = lr.id
-            JOIN users u ON u.user_id = lr.recipient_id
-            WHERE lr.status = 'pending'
-              AND lr.blood_type = ?
-              AND (lr.city = ? OR LOWER(lr.city) LIKE LOWER(CONCAT('%', ?, '%')) OR LOWER(?) LIKE LOWER(CONCAT('%', lr.city, '%')))
-              AND (lc.donor_id IS NULL OR lc.donor_id != ?)
-              AND lr.id NOT IN (SELECT request_id FROM emergency_confirmations WHERE donor_id = ? AND donor_response = 'approve')
-            ORDER BY lr.created_at DESC
-            LIMIT 20
-        ");
+        $availableStmt = $conn->prepare("\n            SELECT lr.*, lc.scheduled_at, lc.reschedule_payload, lc.donor_response, lc.donor_id,\n                   u.first_name AS recipient_first, u.last_name AS recipient_last\n            FROM emergency_requests lr\n            LEFT JOIN emergency_confirmations lc ON lc.request_id = lr.id\n            JOIN users u ON u.user_id = lr.recipient_id\n            WHERE lr.status = 'pending'\n              AND lr.blood_type = ?\n              AND (lr.city = ? OR LOWER(lr.city) LIKE LOWER(CONCAT('%', ?, '%')) OR LOWER(?) LIKE LOWER(CONCAT('%', lr.city, '%')))\n              AND (lc.donor_id IS NULL OR lc.donor_id != ?)\n              AND lr.id NOT IN (SELECT request_id FROM emergency_confirmations WHERE donor_id = ? AND donor_response = 'approve')\n            ORDER BY lr.created_at DESC\n            LIMIT 20\n        ");
         $availableStmt->bind_param("ssssss", $donorBloodType, $donorLocation, $donorLocation, $donorLocation, $userId, $userId);
     } elseif ($hasBloodType) {
         // Match by blood_type only (city column doesn't exist yet)
-        $availableStmt = $conn->prepare("
-            SELECT lr.*, lc.scheduled_at, lc.reschedule_payload, lc.donor_response, lc.donor_id,
-                   u.first_name AS recipient_first, u.last_name AS recipient_last
-            FROM emergency_requests lr
-            LEFT JOIN emergency_confirmations lc ON lc.request_id = lr.id
-            JOIN users u ON u.user_id = lr.recipient_id
-            WHERE lr.status = 'pending'
-              AND lr.blood_type = ?
-              AND (lc.donor_id IS NULL OR lc.donor_id != ?)
-              AND lr.id NOT IN (SELECT request_id FROM emergency_confirmations WHERE donor_id = ? AND donor_response = 'approve')
-            ORDER BY lr.created_at DESC
-            LIMIT 20
-        ");
+        $availableStmt = $conn->prepare("\n            SELECT lr.*, lc.scheduled_at, lc.reschedule_payload, lc.donor_response, lc.donor_id,\n                   u.first_name AS recipient_first, u.last_name AS recipient_last\n            FROM emergency_requests lr\n            LEFT JOIN emergency_confirmations lc ON lc.request_id = lr.id\n            JOIN users u ON u.user_id = lr.recipient_id\n            WHERE lr.status = 'pending'\n              AND lr.blood_type = ?\n              AND (lc.donor_id IS NULL OR lc.donor_id != ?)\n              AND lr.id NOT IN (SELECT request_id FROM emergency_confirmations WHERE donor_id = ? AND donor_response = 'approve')\n            ORDER BY lr.created_at DESC\n            LIMIT 20\n        ");
         $availableStmt->bind_param("sss", $donorBloodType, $userId, $userId);
     } else {
         // Fallback: match by donor's blood type from recipient profile (old method)
-        $availableStmt = $conn->prepare("
-            SELECT lr.*, lc.scheduled_at, lc.reschedule_payload, lc.donor_response, lc.donor_id,
-                   u.first_name AS recipient_first, u.last_name AS recipient_last,
-                   r.blood_type AS recipient_blood_type
-            FROM emergency_requests lr
-            LEFT JOIN emergency_confirmations lc ON lc.request_id = lr.id
-            JOIN users u ON u.user_id = lr.recipient_id
-            LEFT JOIN recipients r ON r.user_id = lr.recipient_id
-            WHERE lr.status = 'pending'
-              AND r.blood_type = ?
-              AND (LOWER(r.location) LIKE LOWER(CONCAT('%', ?, '%')) OR LOWER(?) LIKE LOWER(CONCAT('%', r.location, '%')))
-              AND (lc.donor_id IS NULL OR lc.donor_id != ?)
-              AND lr.id NOT IN (SELECT request_id FROM emergency_confirmations WHERE donor_id = ? AND donor_response = 'approve')
-            ORDER BY lr.created_at DESC
-            LIMIT 20
-        ");
+        $availableStmt = $conn->prepare("\n            SELECT lr.*, lc.scheduled_at, lc.reschedule_payload, lc.donor_response, lc.donor_id,\n                   u.first_name AS recipient_first, u.last_name AS recipient_last,\n                   r.blood_type AS recipient_blood_type\n            FROM emergency_requests lr\n            LEFT JOIN emergency_confirmations lc ON lc.request_id = lr.id\n            JOIN users u ON u.user_id = lr.recipient_id\n            LEFT JOIN recipients r ON r.user_id = lr.recipient_id\n            WHERE lr.status = 'pending'\n              AND r.blood_type = ?\n              AND (LOWER(r.location) LIKE LOWER(CONCAT('%', ?, '%')) OR LOWER(?) LIKE LOWER(CONCAT('%', r.location, '%')))\n              AND (lc.donor_id IS NULL OR lc.donor_id != ?)\n              AND lr.id NOT IN (SELECT request_id FROM emergency_confirmations WHERE donor_id = ? AND donor_response = 'approve')\n            ORDER BY lr.created_at DESC\n            LIMIT 20\n        ");
         $availableStmt->bind_param("sssss", $donorBloodType, $donorLocation, $donorLocation, $userId, $userId);
     }
     
@@ -176,6 +113,7 @@ if (!empty($donorBloodType)) {
 
 // Combine assigned and available requests (assigned first)
 $requests = array_merge($assignedRequests, $availableRequests);
+
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -227,72 +165,6 @@ $requests = array_merge($assignedRequests, $availableRequests);
 <body>
 <?php include('assets/includes/header.php'); ?>
 <section class="container py-5">
-    <!-- Notifications Tab -->
-    <?php if ($unreadCount > 0 || !empty($notifications)): ?>
-    <div class="card p-4 mb-4">
-        <div class="d-flex justify-content-between align-items-center mb-3">
-            <h5 class="mb-0">
-                <i class="fas fa-bell me-2"></i>Notifications
-                <?php if ($unreadCount > 0): ?>
-                    <span class="badge bg-danger"><?= $unreadCount; ?> new</span>
-                <?php endif; ?>
-            </h5>
-            <button class="btn btn-sm btn-outline-secondary" onclick="markAllNotificationsRead()">Mark all as read</button>
-        </div>
-        <div class="notifications-list" style="max-height: 400px; overflow-y: auto;">
-            <?php if (empty($notifications)): ?>
-                <p class="text-muted text-center py-3">No notifications yet.</p>
-            <?php else: ?>
-                <?php foreach ($notifications as $notif): ?>
-                    <?php
-                        $payload = json_decode($notif['payload'] ?? '{}', true) ?: [];
-                        $isRead = $notif['status'] === 'sent';
-                        $notifClass = $isRead ? '' : 'bg-light border-start border-3 border-primary';
-                        $requestId = $payload['request_id'] ?? $notif['request_id'] ?? null;
-                    ?>
-                    <div class="notification-item p-3 mb-2 rounded <?= $notifClass; ?>" data-notification-id="<?= $notif['id']; ?>" data-request-id="<?= $requestId; ?>">
-                        <div class="d-flex justify-content-between align-items-start">
-                            <div class="flex-grow-1">
-                                <?php if ($notif['template_key'] === 'emergency_new_request'): ?>
-                                    <div class="d-flex align-items-center gap-2 mb-1">
-                                        <i class="fas fa-heartbeat text-danger"></i>
-                                                                    <strong>New Emergency Request</strong>
-                                    </div>
-                                                                <p class="mb-1">
-                                                                    A new emergency request matches your profile (Blood Type: <?= htmlspecialchars($notif['blood_type'] ?? 'N/A'); ?>, City: <?= htmlspecialchars($notif['city'] ?? 'N/A'); ?>)
-                                                                </p>
-                                                                <?php if ($requestId): ?>
-                                                                    <a href="emergency-donor.php#request-<?= $requestId; ?>" class="btn btn-sm btn-primary mt-2">View Request</a>
-                                                                <?php endif; ?>
-                                <?php elseif ($notif['template_key'] === 'emergency_donor_approved'): ?>
-                                    <div class="d-flex align-items-center gap-2 mb-1">
-                                        <i class="fas fa-check-circle text-success"></i>
-                                        <strong>Request Approved</strong>
-                                    </div>
-                                    <p class="mb-1">
-                                        Your emergency request has been approved by a donor.
-                                    </p>
-                                    <?php if ($requestId): ?>
-                                        <a href="emergency-recipient.php#request-<?= $requestId; ?>" class="btn btn-sm btn-success mt-2">View Request</a>
-                                    <?php endif; ?>
-                                <?php endif; ?>
-                                <small class="text-muted">
-                                    <i class="far fa-clock me-1"></i><?= date('M d, Y h:i A', strtotime($notif['created_at'])); ?>
-                                </small>
-                            </div>
-                            <?php if (!$isRead): ?>
-                                <button class="btn btn-sm btn-link text-primary mark-read-btn" onclick="markNotificationRead(<?= $notif['id']; ?>)">
-                                    <i class="fas fa-check"></i>
-                                </button>
-                            <?php endif; ?>
-                        </div>
-                    </div>
-                <?php endforeach; ?>
-            <?php endif; ?>
-        </div>
-    </div>
-    <?php endif; ?>
-    
     <div class="card p-4">
         <div class="d-flex justify-content-between align-items-center mb-3">
             <div>
@@ -590,4 +462,3 @@ startCountdown();
 </script>
 </body>
 </html>
-

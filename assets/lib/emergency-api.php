@@ -1,23 +1,196 @@
 <?php
 /**
- * DEPRECATED: Legacy lifeline API
- * For backwards compatibility, forward all requests to the new Emergency API
- * which now handles the same endpoints and behavior.
+ * Emergency Panel API (Phase 2 skeleton)
+ * Handles request creation, donor confirmations, post-donation checks, and feedback.
+ * Auth: uses existing session + ProfileManager roles.
  */
-require_once __DIR__ . '/emergency-api.php';
+session_start();
+header('Content-Type: application/json');
 
-// DEPRECATED wrapper: legacy `lifeline-api.php` forwards to `emergency-api.php`.
-// `emergency-api.php` handles the same actions and will exit after responding.
-// Keeping this file avoids breaking existing external callers that still reference
-// the old endpoint.
-exit;
+require_once __DIR__ . '/openconn.php';
+require_once __DIR__ . '/ProfileManager.php';
+
+$profileManager = new ProfileManager($conn);
+$userId = $_SESSION['user_id'] ?? null;
+
+function respond($success, $data = [], $code = 200) {
+    http_response_code($code);
+    echo json_encode(array_merge(['success' => $success], $data));
+    exit;
+}
+
+function ensureRole($profileManager, $role) {
+    if (!$profileManager->hasRole($role)) {
+        respond(false, ['error' => 'Forbidden'], 403);
+    }
+}
+
+/**
+ * Auto-assign a donor based on recipient profile (blood_type + location).
+ * Returns donor_id string or null if none found.
+ */
+function emergencyAutoAssignDonor($conn, $recipientId, $bloodTypeOverride = null, $city = null) {
+    // Fetch recipient profile traits
+    $r = $conn->prepare("SELECT blood_type, location FROM recipients WHERE user_id = ? LIMIT 1");
+    $r->bind_param("s", $recipientId);
+    $r->execute();
+    $rec = $r->get_result()->fetch_assoc();
+    $r->close();
+    $blood = $bloodTypeOverride ?: ($rec['blood_type'] ?? '');
+    if (empty($blood)) {
+        return null;
+    }
+    
+    // Use provided city or extract from recipient location
+    $matchingCity = $city;
+    if (empty($matchingCity) && !empty($rec['location'])) {
+        $matchingCity = $rec['location'];
+    }
+    
+    // Prefer donors with same blood type and same city (case-insensitive partial match)
+    $query = "
+        SELECT user_id
+        FROM donors
+        WHERE blood_type = ?
+          AND (? = '' OR LOWER(location) LIKE LOWER(CONCAT('%', ?, '%')) OR LOWER(?) LIKE LOWER(CONCAT('%', location, '%')))
+        ORDER BY (CASE WHEN last_donation_date IS NULL THEN 0 ELSE 1 END), last_donation_date ASC
+        LIMIT 1
+    ";
+    $stmt = $conn->prepare($query);
+    $stmt->bind_param("ssss", $blood, $matchingCity, $matchingCity, $matchingCity);
+    $stmt->execute();
+    $res = $stmt->get_result();
+    if ($res && $res->num_rows > 0) {
+        $row = $res->fetch_assoc();
+        $stmt->close();
+        return $row['user_id'];
+    }
+    $stmt->close();
+    
+    // Fallback: any donor with same blood type
+    $fallback = $conn->prepare("SELECT user_id FROM donors WHERE blood_type = ? ORDER BY (CASE WHEN last_donation_date IS NULL THEN 0 ELSE 1 END), last_donation_date ASC LIMIT 1");
+    $fallback->bind_param("s", $blood);
+    $fallback->execute();
+    $res2 = $fallback->get_result();
+    if ($res2 && $res2->num_rows > 0) {
+        $row = $res2->fetch_assoc();
+        $fallback->close();
+        return $row['user_id'];
+    }
+    $fallback->close();
+    return null;
+}
 
 /**
  * Find multiple matching donors and notify them about an emergency request.
  * Returns array of donor IDs that were notified.
  */
-// This file is a DEPRECATED wrapper and no longer contains active legacy logic.
-// All API behavior is handled in `emergency-api.php`.
+function emergencyNotifyMatchingDonors($conn, $requestId, $recipientId, $bloodTypeOverride = null, $city = '', $scheduledAt = '', $excludeDonorId = null) {
+    // Use the blood_type and city from the request (form), not from recipient profile
+    $blood = $bloodTypeOverride ?: '';
+    
+    // If blood_type not provided, try to get from request table
+    if (empty($blood)) {
+        $reqStmt = $conn->prepare("SELECT blood_type FROM emergency_requests WHERE id = ? LIMIT 1");
+        $reqStmt->bind_param("i", $requestId);
+        $reqStmt->execute();
+        $reqResult = $reqStmt->get_result();
+        if ($reqResult && $reqResult->num_rows > 0) {
+            $reqRow = $reqResult->fetch_assoc();
+            $blood = $reqRow['blood_type'] ?? '';
+        }
+        $reqStmt->close();
+    }
+    
+    // If still empty, fallback to recipient profile
+    if (empty($blood)) {
+        $r = $conn->prepare("SELECT blood_type FROM recipients WHERE user_id = ? LIMIT 1");
+        $r->bind_param("s", $recipientId);
+        $r->execute();
+        $rec = $r->get_result()->fetch_assoc();
+        $r->close();
+        $blood = $rec['blood_type'] ?? '';
+    }
+    
+    if (empty($blood)) {
+        return [];
+    }
+    
+    // Use provided city from request form
+    $matchingCity = $city ?: '';
+    
+    // If city not provided, try to get from request table
+    if (empty($matchingCity)) {
+        $cityStmt = $conn->prepare("SELECT city FROM emergency_requests WHERE id = ? LIMIT 1");
+        $cityStmt->bind_param("i", $requestId);
+        $cityStmt->execute();
+        $cityResult = $cityStmt->get_result();
+        if ($cityResult && $cityResult->num_rows > 0) {
+            $cityRow = $cityResult->fetch_assoc();
+            $matchingCity = $cityRow['city'] ?? '';
+        }
+        $cityStmt->close();
+    }
+    
+    // Find matching donors (up to 10 to avoid spam)
+    // Priority: same city first, then same blood type
+    // Match city case-insensitively and handle partial matches
+    // Join with users table to ensure user_id exists and is valid
+    $query = "
+        SELECT d.user_id
+        FROM donors d
+        INNER JOIN users u ON d.user_id = u.user_id
+        WHERE d.blood_type = ?
+          AND d.user_id != ?
+          AND d.user_id NOT IN (SELECT donor_id FROM emergency_confirmations WHERE request_id = ? AND donor_id IS NOT NULL)
+        ORDER BY 
+            CASE WHEN ? != '' AND (LOWER(d.location) LIKE LOWER(CONCAT('%', ?, '%')) OR LOWER(?) LIKE LOWER(CONCAT('%', d.location, '%'))) THEN 1 ELSE 2 END,
+            (CASE WHEN d.last_donation_date IS NULL THEN 0 ELSE 1 END),
+            d.last_donation_date ASC
+        LIMIT 10
+    ";
+    $stmt = $conn->prepare($query);
+    $exclude = $excludeDonorId ?: '';
+    // 6 parameters: blood, exclude, requestId, matchingCity (3 times for the CASE/LIKE conditions)
+    $stmt->bind_param("ssssss", $blood, $exclude, $requestId, $matchingCity, $matchingCity, $matchingCity);
+    $stmt->execute();
+    $res = $stmt->get_result();
+    
+    $notifiedDonors = [];
+    $payload = json_encode([
+        'request_id' => $requestId,
+        'scheduled_at' => $scheduledAt,
+        'city' => $matchingCity,
+        'type' => 'new_request'
+    ]);
+    
+    while ($row = $res->fetch_assoc()) {
+        $donorId = $row['user_id'];
+        
+        // Double-check that user_id exists in users table before creating notification
+        $checkStmt = $conn->prepare("SELECT user_id FROM users WHERE user_id = ? LIMIT 1");
+        $checkStmt->bind_param("s", $donorId);
+        $checkStmt->execute();
+        $checkResult = $checkStmt->get_result();
+        $checkStmt->close();
+        
+        if ($checkResult && $checkResult->num_rows > 0) {
+            // Create notification for each matching donor
+            $notifStmt = $conn->prepare("INSERT INTO emergency_notifications (user_id, channel, template_key, payload, status) VALUES (?, 'in_app', 'emergency_new_request', ?, 'queued')");
+            $notifStmt->bind_param("ss", $donorId, $payload);
+            if ($notifStmt->execute()) {
+                $notifiedDonors[] = $donorId;
+            } else {
+                // Log error but continue with other donors
+                error_log("Failed to create notification for donor {$donorId}: " . $conn->error);
+            }
+            $notifStmt->close();
+        }
+    }
+    $stmt->close();
+    
+    return $notifiedDonors;
+}
 
 /**
  * Ensure donor_id refers to an existing user (donor). Returns donor_id or null.
@@ -46,7 +219,7 @@ if (!$action) {
  * Remove existing reminders and recreate countdown set
  */
 function resetReminders($conn, $requestId, $scheduledAt) {
-    $delete = $conn->prepare("DELETE FROM lifeline_reminders WHERE request_id = ?");
+    $delete = $conn->prepare("DELETE FROM emergency_reminders WHERE request_id = ?");
     $delete->bind_param("i", $requestId);
     $delete->execute();
     $delete->close();
@@ -59,20 +232,20 @@ function resetReminders($conn, $requestId, $scheduledAt) {
 
     foreach ($offsets as [$type, $modifier]) {
         $scheduledFor = date('Y-m-d H:i:s', strtotime($modifier, strtotime($scheduledAt)));
-        $ins = $conn->prepare("INSERT INTO lifeline_reminders (request_id, type, scheduled_for) VALUES (?, ?, ?)");
+        $ins = $conn->prepare("INSERT INTO emergency_reminders (request_id, type, scheduled_for) VALUES (?, ?, ?)");
         $ins->bind_param("iss", $requestId, $type, $scheduledFor);
         $ins->execute();
         $ins->close();
     }
 
     // Final timeout reminder at responder timeout (for donor follow-up)
-    $timeout = $conn->prepare("SELECT responder_timeout_at FROM lifeline_requests WHERE id = ?");
+    $timeout = $conn->prepare("SELECT responder_timeout_at FROM emergency_requests WHERE id = ?");
     $timeout->bind_param("i", $requestId);
     $timeout->execute();
     $result = $timeout->get_result()->fetch_assoc();
     $timeout->close();
     if (!empty($result['responder_timeout_at'])) {
-        $final = $conn->prepare("INSERT INTO lifeline_reminders (request_id, type, scheduled_for) VALUES (?, 'final_timeout', ?)");
+        $final = $conn->prepare("INSERT INTO emergency_reminders (request_id, type, scheduled_for) VALUES (?, 'final_timeout', ?)");
         $final->bind_param("is", $requestId, $result['responder_timeout_at']);
         $final->execute();
         $final->close();
@@ -116,7 +289,7 @@ switch ($action) {
         $responderTimeout = date('Y-m-d H:i:s', strtotime('+12 hours'));
 
         // Check if city and blood_type columns exist
-        $checkStmt = $conn->query("SELECT COLUMN_NAME FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'lifeline_requests' AND COLUMN_NAME IN ('city', 'blood_type')");
+        $checkStmt = $conn->query("SELECT COLUMN_NAME FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'emergency_requests' AND COLUMN_NAME IN ('city', 'blood_type')");
         $existingColumns = [];
         if ($checkStmt) {
             while ($row = $checkStmt->fetch_assoc()) {
@@ -127,7 +300,7 @@ switch ($action) {
         // Add city column if it doesn't exist
         if (!in_array('city', $existingColumns)) {
             try {
-                $conn->query("ALTER TABLE lifeline_requests ADD COLUMN city VARCHAR(100) NULL AFTER location");
+                $conn->query("ALTER TABLE emergency_requests ADD COLUMN city VARCHAR(100) NULL AFTER location");
                 $existingColumns[] = 'city';
             } catch (Exception $e) {
                 // Column might already exist
@@ -137,7 +310,7 @@ switch ($action) {
         // Add blood_type column if it doesn't exist
         if (!in_array('blood_type', $existingColumns)) {
             try {
-                $conn->query("ALTER TABLE lifeline_requests ADD COLUMN blood_type VARCHAR(10) NULL AFTER city");
+                $conn->query("ALTER TABLE emergency_requests ADD COLUMN blood_type VARCHAR(10) NULL AFTER city");
                 $existingColumns[] = 'blood_type';
             } catch (Exception $e) {
                 // Column might already exist
@@ -146,13 +319,13 @@ switch ($action) {
         
         // Insert request with available columns
         if (in_array('city', $existingColumns) && in_array('blood_type', $existingColumns)) {
-            $stmt = $conn->prepare("INSERT INTO lifeline_requests (recipient_id, preferred_date, preferred_time, location, city, blood_type, urgency, note, status, responder_timeout_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?)");
+            $stmt = $conn->prepare("INSERT INTO emergency_requests (recipient_id, preferred_date, preferred_time, location, city, blood_type, urgency, note, status, responder_timeout_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?)");
             $stmt->bind_param("sssssssss", $userId, $preferredDate, $preferredTime, $location, $city, $bloodTypeOverride, $urgency, $note, $responderTimeout);
         } elseif (in_array('city', $existingColumns)) {
-            $stmt = $conn->prepare("INSERT INTO lifeline_requests (recipient_id, preferred_date, preferred_time, location, city, urgency, note, status, responder_timeout_at) VALUES (?, ?, ?, ?, ?, ?, ?, 'pending', ?)");
+            $stmt = $conn->prepare("INSERT INTO emergency_requests (recipient_id, preferred_date, preferred_time, location, city, urgency, note, status, responder_timeout_at) VALUES (?, ?, ?, ?, ?, ?, ?, 'pending', ?)");
             $stmt->bind_param("ssssssss", $userId, $preferredDate, $preferredTime, $location, $city, $urgency, $note, $responderTimeout);
         } else {
-            $stmt = $conn->prepare("INSERT INTO lifeline_requests (recipient_id, preferred_date, preferred_time, location, urgency, note, status, responder_timeout_at) VALUES (?, ?, ?, ?, ?, ?, 'pending', ?)");
+            $stmt = $conn->prepare("INSERT INTO emergency_requests (recipient_id, preferred_date, preferred_time, location, urgency, note, status, responder_timeout_at) VALUES (?, ?, ?, ?, ?, ?, 'pending', ?)");
             $stmt->bind_param("sssssss", $userId, $preferredDate, $preferredTime, $location, $urgency, $note, $responderTimeout);
         }
         if (!$stmt->execute()) {
@@ -163,7 +336,7 @@ switch ($action) {
 
         $scheduledAt = date('Y-m-d H:i:s', strtotime("$preferredDate $preferredTime"));
 
-        $stmt = $conn->prepare("INSERT INTO lifeline_confirmations (request_id, recipient_confirmed, recipient_confirmed_at, donor_id, scheduled_at, countdown_start_at) VALUES (?, 1, NOW(), ?, ?, NOW())");
+        $stmt = $conn->prepare("INSERT INTO emergency_confirmations (request_id, recipient_confirmed, recipient_confirmed_at, donor_id, scheduled_at, countdown_start_at) VALUES (?, 1, NOW(), ?, ?, NOW())");
         $donorParam = $donorId ?: null;
         $stmt->bind_param("iss", $requestId, $donorParam, $scheduledAt);
         $stmt->execute();
@@ -198,7 +371,7 @@ switch ($action) {
             respond(false, ['error' => 'Invalid donor response payload'], 422);
         }
 
-        $req = $conn->prepare("SELECT lr.id, lr.recipient_id, lr.status, lc.donor_id, lc.donor_response FROM lifeline_requests lr JOIN lifeline_confirmations lc ON lc.request_id = lr.id WHERE lr.id = ?");
+        $req = $conn->prepare("SELECT lr.id, lr.recipient_id, lr.status, lc.donor_id, lc.donor_response FROM emergency_requests lr JOIN emergency_confirmations lc ON lc.request_id = lr.id WHERE lr.id = ?");
         $req->bind_param("i", $requestId);
         $req->execute();
         $info = $req->get_result()->fetch_assoc();
@@ -247,7 +420,7 @@ switch ($action) {
             // Double-check within transaction to prevent race conditions
             // Re-check if request is still available for approval
             if ($response === 'approve') {
-                $checkStmt = $conn->prepare("SELECT lr.status, lc.donor_id, lc.donor_response FROM lifeline_requests lr JOIN lifeline_confirmations lc ON lc.request_id = lr.id WHERE lr.id = ? FOR UPDATE");
+                $checkStmt = $conn->prepare("SELECT lr.status, lc.donor_id, lc.donor_response FROM emergency_requests lr JOIN emergency_confirmations lc ON lc.request_id = lr.id WHERE lr.id = ? FOR UPDATE");
                 $checkStmt->bind_param("i", $requestId);
                 $checkStmt->execute();
                 $checkInfo = $checkStmt->get_result()->fetch_assoc();
@@ -277,7 +450,7 @@ switch ($action) {
             $reschedulePayload = null;
             $newStatus = $response === 'approve' ? 'confirmed' : ($response === 'decline' ? 'failed' : 'rescheduled');
 
-            $updateReq = $conn->prepare("UPDATE lifeline_requests SET status = ?, location = CASE WHEN ? <> '' THEN ? ELSE location END, responder_timeout_at = DATE_ADD(NOW(), INTERVAL 12 HOUR) WHERE id = ?");
+            $updateReq = $conn->prepare("UPDATE emergency_requests SET status = ?, location = CASE WHEN ? <> '' THEN ? ELSE location END, responder_timeout_at = DATE_ADD(NOW(), INTERVAL 12 HOUR) WHERE id = ?");
             $updateReq->bind_param("sssi", $newStatus, $location, $location, $requestId);
             $updateReq->execute();
             $updateReq->close();
@@ -286,7 +459,7 @@ switch ($action) {
                 $reschedulePayload = json_encode(['suggested_at' => $scheduledAt, 'location' => $location]);
             }
 
-            $updateConf = $conn->prepare("UPDATE lifeline_confirmations SET donor_id = ?, donor_response = ?, donor_response_at = NOW(), reschedule_payload = ?, scheduled_at = ?, countdown_start_at = NOW() WHERE request_id = ?");
+            $updateConf = $conn->prepare("UPDATE emergency_confirmations SET donor_id = ?, donor_response = ?, donor_response_at = NOW(), reschedule_payload = ?, scheduled_at = ?, countdown_start_at = NOW() WHERE request_id = ?");
             $updateConf->bind_param("ssssi", $userId, $response, $reschedulePayload, $scheduledAt, $requestId);
             $updateConf->execute();
             $updateConf->close();
@@ -303,13 +476,13 @@ switch ($action) {
                     'donor_id' => $userId,
                     'type' => 'donor_approved'
                 ]);
-                $notifStmt = $conn->prepare("INSERT INTO lifeline_notifications (user_id, channel, template_key, payload, status) VALUES (?, 'in_app', 'emergency_donor_approved', ?, 'queued')");
+                $notifStmt = $conn->prepare("INSERT INTO emergency_notifications (user_id, channel, template_key, payload, status) VALUES (?, 'in_app', 'emergency_donor_approved', ?, 'queued')");
                 $notifStmt->bind_param("ss", $recipientId, $notifPayload);
                 $notifStmt->execute();
                 $notifStmt->close();
             } else {
                 // Clear reminders on decline/reschedule
-                $clr = $conn->prepare("DELETE FROM lifeline_reminders WHERE request_id = ?");
+                $clr = $conn->prepare("DELETE FROM emergency_reminders WHERE request_id = ?");
                 $clr->bind_param("i", $requestId);
                 $clr->execute();
                 $clr->close();
@@ -333,12 +506,7 @@ switch ($action) {
         }
 
         // fetch reschedule payload
-        $infoStmt = $conn->prepare("
-            SELECT lr.recipient_id, lc.reschedule_payload
-            FROM lifeline_requests lr
-            JOIN lifeline_confirmations lc ON lc.request_id = lr.id
-            WHERE lr.id = ?
-        ");
+        $infoStmt = $conn->prepare("\n            SELECT lr.recipient_id, lc.reschedule_payload\n            FROM emergency_requests lr\n            JOIN emergency_confirmations lc ON lc.request_id = lr.id\n            WHERE lr.id = ?\n        ");
         $infoStmt->bind_param("i", $requestId);
         $infoStmt->execute();
         $info = $infoStmt->get_result()->fetch_assoc();
@@ -362,12 +530,12 @@ switch ($action) {
 
             $conn->begin_transaction();
             try {
-                $updateReq = $conn->prepare("UPDATE lifeline_requests SET status='confirmed', location=?, responder_timeout_at=DATE_ADD(NOW(), INTERVAL 12 HOUR) WHERE id=?");
+                $updateReq = $conn->prepare("UPDATE emergency_requests SET status='confirmed', location=?, responder_timeout_at=DATE_ADD(NOW(), INTERVAL 12 HOUR) WHERE id=?");
                 $updateReq->bind_param("si", $location, $requestId);
                 $updateReq->execute();
                 $updateReq->close();
 
-                $updateConf = $conn->prepare("UPDATE lifeline_confirmations SET reschedule_payload=NULL, donor_response='approve', donor_response_at=NOW(), scheduled_at=?, countdown_start_at=NOW() WHERE request_id=?");
+                $updateConf = $conn->prepare("UPDATE emergency_confirmations SET reschedule_payload=NULL, donor_response='approve', donor_response_at=NOW(), scheduled_at=?, countdown_start_at=NOW() WHERE request_id=?");
                 $updateConf->bind_param("si", $newScheduled, $requestId);
                 $updateConf->execute();
                 $updateConf->close();
@@ -381,12 +549,12 @@ switch ($action) {
             respond(true, ['status' => 'confirmed']);
         } else {
             // decline reschedule keeps request pending for recipient to recreate
-            $updateConf = $conn->prepare("UPDATE lifeline_confirmations SET reschedule_payload=NULL WHERE request_id=?");
+            $updateConf = $conn->prepare("UPDATE emergency_confirmations SET reschedule_payload=NULL WHERE request_id=?");
             $updateConf->bind_param("i", $requestId);
             $updateConf->execute();
             $updateConf->close();
 
-            $updateReq = $conn->prepare("UPDATE lifeline_requests SET status='failed', responder_timeout_at=NULL WHERE id=?");
+            $updateReq = $conn->prepare("UPDATE emergency_requests SET status='failed', responder_timeout_at=NULL WHERE id=?");
             $updateReq->bind_param("i", $requestId);
             $updateReq->execute();
             $updateReq->close();
@@ -403,7 +571,7 @@ switch ($action) {
             respond(false, ['error' => 'Invalid post-check data'], 422);
         }
 
-        $req = $conn->prepare("SELECT id, recipient_id FROM lifeline_requests WHERE id = ?");
+        $req = $conn->prepare("SELECT id, recipient_id FROM emergency_requests WHERE id = ?");
         $req->bind_param("i", $requestId);
         $req->execute();
         $info = $req->get_result()->fetch_assoc();
@@ -413,7 +581,7 @@ switch ($action) {
             respond(false, ['error' => 'Request not found or unauthorized'], 404);
         }
 
-        $update = $conn->prepare("UPDATE lifeline_requests SET status = ?, updated_at = NOW() WHERE id = ?");
+        $update = $conn->prepare("UPDATE emergency_requests SET status = ?, updated_at = NOW() WHERE id = ?");
         $update->bind_param("si", $result, $requestId);
         $update->execute();
         $update->close();
@@ -428,7 +596,7 @@ switch ($action) {
         }
         
         // Verify notification belongs to current user
-        $checkStmt = $conn->prepare("SELECT user_id FROM lifeline_notifications WHERE id = ? AND user_id = ? LIMIT 1");
+        $checkStmt = $conn->prepare("SELECT user_id FROM emergency_notifications WHERE id = ? AND user_id = ? LIMIT 1");
         $checkStmt->bind_param("is", $notificationId, $userId);
         $checkStmt->execute();
         $checkResult = $checkStmt->get_result();
@@ -439,7 +607,7 @@ switch ($action) {
         }
         
         // Mark as read (update status to 'sent')
-        $updateStmt = $conn->prepare("UPDATE lifeline_notifications SET status = 'sent', sent_at = NOW() WHERE id = ? AND user_id = ?");
+        $updateStmt = $conn->prepare("UPDATE emergency_notifications SET status = 'sent', sent_at = NOW() WHERE id = ? AND user_id = ?");
         $updateStmt->bind_param("is", $notificationId, $userId);
         if ($updateStmt->execute()) {
             respond(true, ['message' => 'Notification marked as read']);
@@ -451,7 +619,7 @@ switch ($action) {
 
     case 'mark_all_notifications_read':
         // Mark all in_app notifications for current user as read
-        $updateStmt = $conn->prepare("UPDATE lifeline_notifications SET status = 'sent', sent_at = NOW() WHERE user_id = ? AND channel = 'in_app' AND status = 'queued'");
+        $updateStmt = $conn->prepare("UPDATE emergency_notifications SET status = 'sent', sent_at = NOW() WHERE user_id = ? AND channel = 'in_app' AND status = 'queued'");
         $updateStmt->bind_param("s", $userId);
         if ($updateStmt->execute()) {
             $affected = $updateStmt->affected_rows;
@@ -463,7 +631,7 @@ switch ($action) {
         break;
 
     case 'get_unread_count':
-        $countStmt = $conn->prepare("SELECT COUNT(*) as cnt FROM lifeline_notifications WHERE user_id = ? AND channel = 'in_app' AND status = 'queued' AND template_key IN ('emergency_new_request', 'emergency_donor_approved')");
+        $countStmt = $conn->prepare("SELECT COUNT(*) as cnt FROM emergency_notifications WHERE user_id = ? AND channel = 'in_app' AND status = 'queued' AND template_key IN ('emergency_new_request', 'emergency_donor_approved')");
         $countStmt->bind_param("s", $userId);
         $countStmt->execute();
         $countResult = $countStmt->get_result();
@@ -473,17 +641,9 @@ switch ($action) {
         break;
 
     case 'get_notifications':
-        // Fetch emergency notifications for current user (legacy lifeline API retains notification storage in lifeline_notifications)
+        // Fetch emergency notifications for current user
         $notifications = [];
-        $notifStmt = $conn->prepare("
-            SELECT ln.*
-            FROM lifeline_notifications ln
-            WHERE ln.user_id = ?
-              AND ln.channel = 'in_app'
-              AND ln.template_key IN ('emergency_new_request', 'emergency_donor_approved')
-            ORDER BY ln.created_at DESC
-            LIMIT 10
-        ");
+        $notifStmt = $conn->prepare("\n            SELECT ln.*\n            FROM emergency_notifications ln\n            WHERE ln.user_id = ?\n              AND ln.channel = 'in_app'\n              AND ln.template_key IN ('emergency_new_request', 'emergency_donor_approved')\n            ORDER BY ln.created_at DESC\n            LIMIT 10\n        ");
         $notifStmt->bind_param("s", $userId);
         $notifStmt->execute();
         $notifResult = $notifStmt->get_result();
@@ -494,10 +654,8 @@ switch ($action) {
             $donorId = $payload['donor_id'] ?? null;
             
             // Fetch request details if available
-            if ($requestId) {
-                $reqStmt = $conn->prepare("SELECT lr.id, lr.preferred_date, lr.preferred_time, lr.location, lr.blood_type, lr.city
-                                           FROM lifeline_requests lr
-                                           WHERE lr.id = ? LIMIT 1");
+                if ($requestId) {
+                $reqStmt = $conn->prepare("SELECT lr.id, lr.preferred_date, lr.preferred_time, lr.location, lr.blood_type, lr.city\n                                           FROM emergency_requests lr\n                                           WHERE lr.id = ? LIMIT 1");
                 $reqStmt->bind_param("i", $requestId);
                 $reqStmt->execute();
                 $reqResult = $reqStmt->get_result();
@@ -510,9 +668,7 @@ switch ($action) {
             
             // Fetch donor details if available (for recipient notifications)
             if ($donorId) {
-                $donorStmt = $conn->prepare("SELECT u.first_name AS donor_first, u.last_name AS donor_last
-                                             FROM users u
-                                             WHERE u.user_id = ? LIMIT 1");
+                $donorStmt = $conn->prepare("SELECT u.first_name AS donor_first, u.last_name AS donor_last\n                                             FROM users u\n                                             WHERE u.user_id = ? LIMIT 1");
                 $donorStmt->bind_param("s", $donorId);
                 $donorStmt->execute();
                 $donorResult = $donorStmt->get_result();
@@ -531,7 +687,7 @@ switch ($action) {
         
         // Count unread notifications
         $unreadCount = 0;
-        $unreadStmt = $conn->prepare("SELECT COUNT(*) as cnt FROM lifeline_notifications WHERE user_id = ? AND channel = 'in_app' AND status = 'queued' AND template_key IN ('emergency_new_request', 'emergency_donor_approved')");
+        $unreadStmt = $conn->prepare("SELECT COUNT(*) as cnt FROM emergency_notifications WHERE user_id = ? AND channel = 'in_app' AND status = 'queued' AND template_key IN ('emergency_new_request', 'emergency_donor_approved')");
         $unreadStmt->bind_param("s", $userId);
         $unreadStmt->execute();
         $unreadResult = $unreadStmt->get_result();
@@ -555,7 +711,7 @@ switch ($action) {
         }
 
         // Validate participation
-        $req = $conn->prepare("SELECT lr.recipient_id, lc.donor_id FROM lifeline_requests lr JOIN lifeline_confirmations lc ON lc.request_id = lr.id WHERE lr.id = ?");
+        $req = $conn->prepare("SELECT lr.recipient_id, lc.donor_id FROM emergency_requests lr JOIN emergency_confirmations lc ON lc.request_id = lr.id WHERE lr.id = ?");
         $req->bind_param("i", $requestId);
         $req->execute();
         $info = $req->get_result()->fetch_assoc();
@@ -573,7 +729,7 @@ switch ($action) {
 
         $toUser = $role === 'recipient' ? $info['donor_id'] : $info['recipient_id'];
 
-        $stmt = $conn->prepare("INSERT INTO lifeline_feedback (request_id, from_user_id, to_user_id, role, rating, remarks) VALUES (?, ?, ?, ?, ?, ?)");
+        $stmt = $conn->prepare("INSERT INTO emergency_feedback (request_id, from_user_id, to_user_id, role, rating, remarks) VALUES (?, ?, ?, ?, ?, ?)");
         $stmt->bind_param("isssis", $requestId, $userId, $toUser, $role, $rating, $remarks);
         if (!$stmt->execute()) {
             respond(false, ['error' => 'Failed to submit feedback'], 500);
@@ -586,4 +742,3 @@ switch ($action) {
     default:
         respond(false, ['error' => 'Unknown action'], 400);
 }
-

@@ -1,7 +1,6 @@
 <?php
-// Backwards-compatible redirect: legacy URL -> new Emergency page
-header('Location: emergency-recipient.php');
-exit();
+error_reporting(E_ALL);
+ini_set('display_errors', 1);
 
 session_start();
 require_once __DIR__ . '/assets/lib/openconn.php';
@@ -13,15 +12,7 @@ $userId = $_SESSION['user_id'];
 
 // Fetch emergency notifications for this recipient
 $notifications = [];
-$notifStmt = $conn->prepare("
-    SELECT ln.*
-    FROM emergency_notifications ln
-    WHERE ln.user_id = ?
-      AND ln.channel = 'in_app'
-    AND ln.template_key IN ('emergency_new_request', 'emergency_donor_approved')
-    ORDER BY ln.created_at DESC
-    LIMIT 20
-");
+$notifStmt = $conn->prepare("\n    SELECT ln.*\n    FROM emergency_notifications ln\n    WHERE ln.user_id = ?\n      AND ln.channel = 'in_app'\n    AND ln.template_key IN ('emergency_new_request', 'emergency_donor_approved')\n    ORDER BY ln.created_at DESC\n    LIMIT 20\n");
 $notifStmt->bind_param("s", $userId);
 $notifStmt->execute();
 $notifResult = $notifStmt->get_result();
@@ -33,9 +24,7 @@ while ($row = $notifResult->fetch_assoc()) {
     
     // Fetch request details if available
     if ($requestId) {
-        $reqStmt = $conn->prepare("SELECT lr.id, lr.preferred_date, lr.preferred_time, lr.location, lr.blood_type, lr.city
-                                   FROM emergency_requests lr
-                                   WHERE lr.id = ? LIMIT 1");
+        $reqStmt = $conn->prepare("SELECT lr.id, lr.preferred_date, lr.preferred_time, lr.location, lr.blood_type, lr.city\n                                   FROM emergency_requests lr\n                                   WHERE lr.id = ? LIMIT 1");
         $reqStmt->bind_param("i", $requestId);
         $reqStmt->execute();
         $reqResult = $reqStmt->get_result();
@@ -48,9 +37,7 @@ while ($row = $notifResult->fetch_assoc()) {
     
     // Fetch donor details if available
     if ($donorId) {
-        $donorStmt = $conn->prepare("SELECT u.first_name AS donor_first, u.last_name AS donor_last
-                                     FROM users u
-                                     WHERE u.user_id = ? LIMIT 1");
+        $donorStmt = $conn->prepare("SELECT u.first_name AS donor_first, u.last_name AS donor_last\n                                     FROM users u\n                                     WHERE u.user_id = ? LIMIT 1");
         $donorStmt->bind_param("s", $donorId);
         $donorStmt->execute();
         $donorResult = $donorStmt->get_result();
@@ -77,20 +64,9 @@ if ($unreadResult && $unreadResult->num_rows > 0) {
 }
 $unreadStmt->close();
 
-// Fetch recent emergency requests for this recipient (legacy file kept for backward-compatibility)
+// Fetch recent emergency requests for this recipient
 $requests = [];
-$stmt = $conn->prepare("
-    SELECT lr.*, lc.scheduled_at, lc.donor_id, lc.reschedule_payload,
-           u.first_name AS donor_first, u.last_name AS donor_last,
-           COALESCE(lr.blood_type, r.blood_type) AS requested_blood_type
-    FROM emergency_requests lr
-    LEFT JOIN emergency_confirmations lc ON lc.request_id = lr.id
-    LEFT JOIN users u ON u.user_id = lc.donor_id
-    LEFT JOIN recipients r ON r.user_id = lr.recipient_id
-    WHERE lr.recipient_id = ?
-    ORDER BY lr.created_at DESC
-    LIMIT 30
-");
+$stmt = $conn->prepare("\n    SELECT lr.*, lc.scheduled_at, lc.donor_id, lc.reschedule_payload,\n           u.first_name AS donor_first, u.last_name AS donor_last,\n           COALESCE(lr.blood_type, r.blood_type) AS requested_blood_type\n    FROM emergency_requests lr\n    LEFT JOIN emergency_confirmations lc ON lc.request_id = lr.id\n    LEFT JOIN users u ON u.user_id = lc.donor_id\n    LEFT JOIN recipients r ON r.user_id = lr.recipient_id\n    WHERE lr.recipient_id = ?\n    ORDER BY lr.created_at DESC\n    LIMIT 30\n");
 $stmt->bind_param("s", $userId);
 $stmt->execute();
 $res = $stmt->get_result();
@@ -272,81 +248,12 @@ $stmt->close();
 <body>
 <?php include('assets/includes/header.php'); ?>
 <section class="container py-5">
-    <!-- Notifications Tab -->
-    <?php if ($unreadCount > 0 || !empty($notifications)): ?>
-    <div class="card p-4 mb-4">
-        <div class="d-flex justify-content-between align-items-center mb-3">
-            <h5 class="mb-0">
-                <i class="fas fa-bell me-2"></i>Notifications
-                <?php if ($unreadCount > 0): ?>
-                    <span class="badge bg-danger"><?= $unreadCount; ?> new</span>
-                <?php endif; ?>
-            </h5>
-            <button class="btn btn-sm btn-outline-secondary" onclick="markAllNotificationsRead()">Mark all as read</button>
-        </div>
-        <div class="notifications-list" style="max-height: 400px; overflow-y: auto;">
-            <?php if (empty($notifications)): ?>
-                <p class="text-muted text-center py-3">No notifications yet.</p>
-            <?php else: ?>
-                <?php foreach ($notifications as $notif): ?>
-                    <?php
-                        $payload = json_decode($notif['payload'] ?? '{}', true) ?: [];
-                        $isRead = $notif['status'] === 'sent';
-                        $notifClass = $isRead ? '' : 'bg-light border-start border-3 border-primary';
-                        $requestId = $payload['request_id'] ?? $notif['request_id'] ?? null;
-                        $donorName = trim(($notif['donor_first'] ?? '') . ' ' . ($notif['donor_last'] ?? ''));
-                    ?>
-                    <div class="notification-item p-3 mb-2 rounded <?= $notifClass; ?>" data-notification-id="<?= $notif['id']; ?>" data-request-id="<?= $requestId; ?>">
-                        <div class="d-flex justify-content-between align-items-start">
-                            <div class="flex-grow-1">
-                                <?php if ($notif['template_key'] === 'emergency_donor_approved'): ?>
-                                    <div class="d-flex align-items-center gap-2 mb-1">
-                                        <i class="fas fa-check-circle text-success"></i>
-                                        <strong>Donor Approved Your Request</strong>
-                                    </div>
-                                    <p class="mb-1">
-                                        <?php if ($donorName): ?>
-                                            <strong><?= htmlspecialchars($donorName); ?></strong> has approved your emergency request.
-                                        <?php else: ?>
-                                            A donor has approved your emergency request.
-                                        <?php endif; ?>
-                                    </p>
-                                    <?php if ($requestId): ?>
-                                        <a href="emergency-recipient.php#request-<?= $requestId; ?>" class="btn btn-sm btn-success mt-2">View Request</a>
-                                    <?php endif; ?>
-                                <?php elseif ($notif['template_key'] === 'emergency_new_request'): ?>
-                                    <div class="d-flex align-items-center gap-2 mb-1">
-                                        <i class="fas fa-heartbeat text-danger"></i>
-                                        <strong>New Request Created</strong>
-                                    </div>
-                                    <p class="mb-1">Your emergency request has been created and matching donors have been notified.</p>
-                                    <?php if ($requestId): ?>
-                                        <a href="emergency-recipient.php#request-<?= $requestId; ?>" class="btn btn-sm btn-primary mt-2">View Request</a>
-                                    <?php endif; ?>
-                                <?php endif; ?>
-                                <small class="text-muted">
-                                    <i class="far fa-clock me-1"></i><?= date('M d, Y h:i A', strtotime($notif['created_at'])); ?>
-                                </small>
-                            </div>
-                            <?php if (!$isRead): ?>
-                                <button class="btn btn-sm btn-link text-primary mark-read-btn" onclick="markNotificationRead(<?= $notif['id']; ?>)">
-                                    <i class="fas fa-check"></i>
-                                </button>
-                            <?php endif; ?>
-                        </div>
-                    </div>
-                <?php endforeach; ?>
-            <?php endif; ?>
-        </div>
-    </div>
-    <?php endif; ?>
-    
     <div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-3">
         <div>
             <h2 class="mb-1"><i class="fas fa-heartbeat me-2 text-danger"></i>Emergency Requests</h2>
             <p class="text-muted mb-0">Manage your blood donation requests</p>
         </div>
-                <a href="#createRequestForm" class="btn btn-danger btn-lg">
+        <a href="#createRequestForm" class="btn btn-danger btn-lg">
             <i class="fas fa-plus me-2"></i>Create New Request
         </a>
     </div>
@@ -416,20 +323,20 @@ $stmt->close();
                     </div>
                 </div>
                 
-                        <?php if (empty($requests)): ?>
+                <?php if (empty($requests)): ?>
                     <div class="empty-state">
                         <i class="fas fa-inbox"></i>
                         <h5 class="mt-3">No emergency requests yet</h5>
                         <p class="text-muted">Create your first emergency request using the form on the left.</p>
                     </div>
-                        <?php else: ?>
+                <?php else: ?>
                     <div class="requests-list">
-                            <?php foreach ($requests as $req): ?>
-                                <?php
-                                    $statusClass = 'status-' . $req['status'];
+                        <?php foreach ($requests as $req): ?>
+                            <?php
+                                $statusClass = 'status-' . $req['status'];
                                 $cardStatusClass = $req['status'];
-                                    $when = htmlspecialchars($req['preferred_date'] . ' ' . $req['preferred_time']);
-                                    $donorName = trim(($req['donor_first'] ?? '') . ' ' . ($req['donor_last'] ?? ''));
+                                $when = htmlspecialchars($req['preferred_date'] . ' ' . $req['preferred_time']);
+                                $donorName = trim(($req['donor_first'] ?? '') . ' ' . ($req['donor_last'] ?? ''));
                                 $createdDate = date('M d, Y', strtotime($req['created_at']));
                                 $urgencyClass = 'urgency-' . ($req['urgency'] ?? 'normal');
                             ?>
@@ -451,12 +358,12 @@ $stmt->close();
                                         <div>
                                             <strong>Date & Time</strong><br>
                                             <span><?= $when; ?></span>
-                                        <?php if ($req['status'] === 'confirmed' && !empty($req['scheduled_at'])): ?>
+                                            <?php if ($req['status'] === 'confirmed' && !empty($req['scheduled_at'])): ?>
                                                 <div class="countdown" data-countdown="<?= htmlspecialchars($req['scheduled_at']); ?>">
                                                     <i class="fas fa-clock me-1"></i>Time remaining
                                                 </div>
-                                        <?php elseif ($req['status'] === 'rescheduled' && !empty($req['reschedule_payload'])): ?>
-                                            <?php $payload = json_decode($req['reschedule_payload'], true); ?>
+                                            <?php elseif ($req['status'] === 'rescheduled' && !empty($req['reschedule_payload'])): ?>
+                                                <?php $payload = json_decode($req['reschedule_payload'], true); ?>
                                                 <div class="small text-muted mt-1">
                                                     <i class="fas fa-redo me-1"></i>Suggested: <?= htmlspecialchars($payload['suggested_at'] ?? ''); ?>
                                                     <?php if (!empty($payload['location'])): ?>
@@ -498,8 +405,8 @@ $stmt->close();
                                             <strong>Notes</strong><br>
                                             <span><?= htmlspecialchars($req['note']); ?></span>
                                         </div>
-                                            </div>
-                                        <?php endif; ?>
+                                    </div>
+                                    <?php endif; ?>
                                 </div>
                                 
                                 <div class="action-buttons">
@@ -509,33 +416,33 @@ $stmt->close();
                                         </a>
                                     <?php endif; ?>
                                     
-                                        <?php if ($req['status'] === 'confirmed'): ?>
-                                        <button class="btn btn-success btn-sm post-check" data-result="completed">
+                                    <?php if ($req['status'] === 'confirmed'): ?>
+                                        <button class="btn btn-success btn-sm post-check" data-result="completed" data-request-id="<?= (int)$req['id']; ?>">
                                             <i class="fas fa-check-circle me-1"></i> Mark Done
                                         </button>
-                                        <button class="btn btn-outline-danger btn-sm post-check" data-result="failed">
+                                        <button class="btn btn-outline-danger btn-sm post-check" data-result="failed" data-request-id="<?= (int)$req['id']; ?>">
                                             <i class="fas fa-times-circle me-1"></i> Mark Failed
                                         </button>
-                                        <?php elseif ($req['status'] === 'rescheduled' && !empty($req['reschedule_payload'])): ?>
+                                    <?php elseif ($req['status'] === 'rescheduled' && !empty($req['reschedule_payload'])): ?>
                                         <?php $payload = json_decode($req['reschedule_payload'], true); ?>
                                         <div class="d-flex gap-2" style="width: 100%;">
-                                            <button class="btn btn-success btn-sm accept-reschedule flex-fill" data-accept="1">
+                                            <button class="btn btn-success btn-sm accept-reschedule flex-fill" data-accept="1" data-request-id="<?= (int)$req['id']; ?>">
                                                 <i class="fas fa-check me-1"></i> Accept Reschedule
                                             </button>
-                                            <button class="btn btn-outline-danger btn-sm accept-reschedule flex-fill" data-accept="0">
+                                            <button class="btn btn-outline-danger btn-sm accept-reschedule flex-fill" data-accept="0" data-request-id="<?= (int)$req['id']; ?>">
                                                 <i class="fas fa-times me-1"></i> Decline
                                             </button>
-                                            </div>
-                                        <?php else: ?>
+                                        </div>
+                                    <?php else: ?>
                                         <span class="text-muted small">
                                             <i class="fas fa-info-circle me-1"></i>No actions available
                                         </span>
-                                        <?php endif; ?>
+                                    <?php endif; ?>
                                 </div>
                             </div>
-                            <?php endforeach; ?>
+                        <?php endforeach; ?>
                     </div>
-                        <?php endif; ?>
+                <?php endif; ?>
             </div>
         </div>
     </div>
@@ -566,8 +473,7 @@ form.addEventListener('submit', async (e) => {
 
 document.querySelectorAll('.post-check').forEach(btn => {
     btn.addEventListener('click', async () => {
-        const row = btn.closest('tr');
-        const id = row.dataset.requestId;
+        const id = btn.dataset.requestId;
         const data = new FormData();
         data.append('action', 'post_check');
         data.append('request_id', id);
@@ -584,11 +490,9 @@ document.querySelectorAll('.post-check').forEach(btn => {
     });
 });
 
-// Accept / decline reschedule
 document.querySelectorAll('.accept-reschedule').forEach(btn => {
     btn.addEventListener('click', async () => {
-        const row = btn.closest('tr');
-        const id = row.dataset.requestId;
+        const id = btn.dataset.requestId;
         const accept = btn.dataset.accept;
         const data = new FormData();
         data.append('action', 'accept_reschedule');
@@ -606,7 +510,6 @@ document.querySelectorAll('.accept-reschedule').forEach(btn => {
     });
 });
 
-// Countdown timers for confirmed requests
 function startCountdown() {
     document.querySelectorAll('[data-countdown]').forEach(el => {
         const target = new Date(el.dataset.countdown).getTime();
@@ -640,14 +543,12 @@ function startCountdown() {
 }
 startCountdown();
 
-// Smooth scroll to form when clicking "Create New Request" buttons
 document.querySelectorAll('a[href="#createRequestForm"]').forEach(link => {
     link.addEventListener('click', function(e) {
         e.preventDefault();
         const form = document.getElementById('createRequestForm');
         if (form) {
             form.scrollIntoView({ behavior: 'smooth', block: 'start' });
-            // Focus on first input after scroll
             setTimeout(() => {
                 const firstInput = form.querySelector('input, select, textarea');
                 if (firstInput) firstInput.focus();
@@ -656,7 +557,6 @@ document.querySelectorAll('a[href="#createRequestForm"]').forEach(link => {
     });
 });
 
-// Mark notification as read
 function markNotificationRead(notificationId) {
     fetch('assets/lib/emergency-api.php', {
         method: 'POST',
@@ -671,7 +571,6 @@ function markNotificationRead(notificationId) {
                 notifItem.classList.remove('bg-light', 'border-start', 'border-3', 'border-primary');
                 const markReadBtn = notifItem.querySelector('.mark-read-btn');
                 if (markReadBtn) markReadBtn.remove();
-                // Update unread count
                 updateUnreadCount();
             }
         }
@@ -679,7 +578,6 @@ function markNotificationRead(notificationId) {
     .catch(err => console.error('Error marking notification as read:', err));
 }
 
-// Mark all notifications as read
 function markAllNotificationsRead() {
     fetch('assets/lib/emergency-api.php', {
         method: 'POST',
@@ -695,7 +593,6 @@ function markAllNotificationsRead() {
     .catch(err => console.error('Error marking all notifications as read:', err));
 }
 
-// Update unread count badge
 function updateUnreadCount() {
     fetch('assets/lib/emergency-api.php?action=get_unread_count')
         .then(res => res.json())
@@ -722,4 +619,5 @@ function updateUnreadCount() {
 </script>
 </body>
 </html>
-
+<?php
+// End of emergency-recipient.php
