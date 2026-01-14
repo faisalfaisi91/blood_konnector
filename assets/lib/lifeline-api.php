@@ -1,589 +1,689 @@
 <?php
 /**
- * DEPRECATED: Legacy lifeline API
- * For backwards compatibility, forward all requests to the new Emergency API
- * which now handles the same endpoints and behavior.
+ * LifeLine Panel API
+ * Handles all API requests for the LifeLine Panel system
  */
-require_once __DIR__ . '/emergency-api.php';
 
-// DEPRECATED wrapper: legacy `lifeline-api.php` forwards to `emergency-api.php`.
-// `emergency-api.php` handles the same actions and will exit after responding.
-// Keeping this file avoids breaking existing external callers that still reference
-// the old endpoint.
-exit;
+session_start();
+require_once __DIR__ . '/../../config.php';
+require_once __DIR__ . '/openconn.php';
+require_once __DIR__ . '/ProfileManager.php';
 
-/**
- * Find multiple matching donors and notify them about an emergency request.
- * Returns array of donor IDs that were notified.
- */
-// This file is a DEPRECATED wrapper and no longer contains active legacy logic.
-// All API behavior is handled in `emergency-api.php`.
+header('Content-Type: application/json');
 
-/**
- * Ensure donor_id refers to an existing user (donor). Returns donor_id or null.
- */
-function emergencyValidateDonor($conn, $donorId) {
-    if (!$donorId) return null;
-    $stmt = $conn->prepare("SELECT u.user_id FROM users u LEFT JOIN donors d ON d.user_id = u.user_id WHERE u.user_id = ? AND (u.is_donor = 1 OR d.user_id IS NOT NULL) LIMIT 1");
-    $stmt->bind_param("s", $donorId);
-    $stmt->execute();
-    $res = $stmt->get_result();
-    $ok = ($res && $res->num_rows > 0);
-    $stmt->close();
-    return $ok ? $donorId : null;
+$profileManager = new ProfileManager($conn);
+
+// Check if user is logged in
+if (!$profileManager->isLoggedIn()) {
+    http_response_code(401);
+    echo json_encode(['success' => false, 'error' => 'Unauthorized']);
+    exit();
 }
 
-if (!$profileManager->isLoggedIn()) {
-    respond(false, ['error' => 'Unauthorized'], 401);
+$userId = $_SESSION['user_id'];
+
+// Handle JSON input
+$jsonInput = json_decode(file_get_contents('php://input'), true);
+if ($jsonInput) {
+    $_POST = array_merge($_POST, $jsonInput);
 }
 
 $action = $_POST['action'] ?? $_GET['action'] ?? '';
-if (!$action) {
-    respond(false, ['error' => 'Action is required'], 400);
+
+/**
+ * Helper function to send JSON response
+ */
+function respond($success, $data = [], $statusCode = 200) {
+    http_response_code($statusCode);
+    echo json_encode(array_merge(['success' => $success], $data));
+    exit();
 }
 
 /**
- * Remove existing reminders and recreate countdown set
+ * Ensure user has recipient role
  */
-function resetReminders($conn, $requestId, $scheduledAt) {
-    $delete = $conn->prepare("DELETE FROM lifeline_reminders WHERE request_id = ?");
-    $delete->bind_param("i", $requestId);
-    $delete->execute();
-    $delete->close();
-
-    $offsets = [
-        ['24h', '-24 hour'],
-        ['6h', '-6 hour'],
-        ['1h', '-1 hour'],
-    ];
-
-    foreach ($offsets as [$type, $modifier]) {
-        $scheduledFor = date('Y-m-d H:i:s', strtotime($modifier, strtotime($scheduledAt)));
-        $ins = $conn->prepare("INSERT INTO lifeline_reminders (request_id, type, scheduled_for) VALUES (?, ?, ?)");
-        $ins->bind_param("iss", $requestId, $type, $scheduledFor);
-        $ins->execute();
-        $ins->close();
-    }
-
-    // Final timeout reminder at responder timeout (for donor follow-up)
-    $timeout = $conn->prepare("SELECT responder_timeout_at FROM lifeline_requests WHERE id = ?");
-    $timeout->bind_param("i", $requestId);
-    $timeout->execute();
-    $result = $timeout->get_result()->fetch_assoc();
-    $timeout->close();
-    if (!empty($result['responder_timeout_at'])) {
-        $final = $conn->prepare("INSERT INTO lifeline_reminders (request_id, type, scheduled_for) VALUES (?, 'final_timeout', ?)");
-        $final->bind_param("is", $requestId, $result['responder_timeout_at']);
-        $final->execute();
-        $final->close();
+function ensureRecipient($profileManager) {
+    if (!$profileManager->hasRole('recipient')) {
+        respond(false, ['error' => 'Recipient role required'], 403);
     }
 }
 
-switch ($action) {
-    case 'create_request':
-        ensureRole($profileManager, 'recipient');
+/**
+ * Find matching donors by blood type and city
+ */
+function findMatchingDonors($conn, $bloodType, $city) {
+    $donors = [];
+    
+    // Find donors with matching blood type and city (case-insensitive partial match)
+    $query = "
+        SELECT d.user_id, d.blood_type, d.location,
+               u.first_name, u.last_name, u.email
+        FROM donors d
+        INNER JOIN users u ON d.user_id = u.user_id
+        WHERE d.blood_type = ?
+          AND (? = '' OR LOWER(d.location) LIKE LOWER(CONCAT('%', ?, '%')) OR LOWER(?) LIKE LOWER(CONCAT('%', d.location, '%')))
+        ORDER BY 
+            CASE WHEN ? != '' AND (LOWER(d.location) LIKE LOWER(CONCAT('%', ?, '%')) OR LOWER(?) LIKE LOWER(CONCAT('%', d.location, '%'))) THEN 1 ELSE 2 END,
+            (CASE WHEN d.last_donation_date IS NULL THEN 0 ELSE 1 END),
+            d.last_donation_date ASC
+        LIMIT 20
+    ";
+    
+    $stmt = $conn->prepare($query);
+    $stmt->bind_param("sssssss", $bloodType, $city, $city, $city, $city, $city, $city);
+    $stmt->execute();
+    $result = $stmt->get_result();
+    
+    while ($row = $result->fetch_assoc()) {
+        $donors[] = $row;
+    }
+    $stmt->close();
+    
+    return $donors;
+}
 
-        $preferredDate = trim($_POST['preferred_date'] ?? '');
-        $preferredTime = trim($_POST['preferred_time'] ?? '');
-        $location = trim($_POST['location'] ?? '');
-        $city = trim($_POST['city'] ?? '');
-        $urgency = $_POST['urgency'] ?? 'normal';
-        $note = trim($_POST['note'] ?? '');
-        $donorId = trim($_POST['donor_id'] ?? '');
-        $bloodTypeOverride = trim($_POST['blood_type'] ?? '');
-
-        if (!$preferredDate || !$preferredTime || !$location || !$city) {
-            respond(false, ['error' => 'Date, time, location, and city are required'], 422);
-        }
-
-        // If a blood type is provided on the form, prefer it for matching when recipient profile is missing/empty
-        $matchingBloodType = null;
-        if ($bloodTypeOverride) {
-            $matchingBloodType = $bloodTypeOverride;
-        }
-
-        // Auto-assign donor if none provided
-        if (!$donorId) {
-            $auto = emergencyAutoAssignDonor($conn, $userId, $matchingBloodType, $city);
-            if ($auto) {
-                $donorId = $auto;
-            }
-        }
-
-        // Validate donor_id against users/donors; null it if invalid
-        $donorId = emergencyValidateDonor($conn, $donorId);
-
-        $responderTimeout = date('Y-m-d H:i:s', strtotime('+12 hours'));
-
-        // Check if city and blood_type columns exist
-        $checkStmt = $conn->query("SELECT COLUMN_NAME FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'lifeline_requests' AND COLUMN_NAME IN ('city', 'blood_type')");
-        $existingColumns = [];
-        if ($checkStmt) {
-            while ($row = $checkStmt->fetch_assoc()) {
-                $existingColumns[] = $row['COLUMN_NAME'];
-            }
-        }
-        
-        // Add city column if it doesn't exist
-        if (!in_array('city', $existingColumns)) {
-            try {
-                $conn->query("ALTER TABLE lifeline_requests ADD COLUMN city VARCHAR(100) NULL AFTER location");
-                $existingColumns[] = 'city';
-            } catch (Exception $e) {
-                // Column might already exist
-            }
-        }
-        
-        // Add blood_type column if it doesn't exist
-        if (!in_array('blood_type', $existingColumns)) {
-            try {
-                $conn->query("ALTER TABLE lifeline_requests ADD COLUMN blood_type VARCHAR(10) NULL AFTER city");
-                $existingColumns[] = 'blood_type';
-            } catch (Exception $e) {
-                // Column might already exist
-            }
-        }
-        
-        // Insert request with available columns
-        if (in_array('city', $existingColumns) && in_array('blood_type', $existingColumns)) {
-            $stmt = $conn->prepare("INSERT INTO lifeline_requests (recipient_id, preferred_date, preferred_time, location, city, blood_type, urgency, note, status, responder_timeout_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?)");
-            $stmt->bind_param("sssssssss", $userId, $preferredDate, $preferredTime, $location, $city, $bloodTypeOverride, $urgency, $note, $responderTimeout);
-        } elseif (in_array('city', $existingColumns)) {
-            $stmt = $conn->prepare("INSERT INTO lifeline_requests (recipient_id, preferred_date, preferred_time, location, city, urgency, note, status, responder_timeout_at) VALUES (?, ?, ?, ?, ?, ?, ?, 'pending', ?)");
-            $stmt->bind_param("ssssssss", $userId, $preferredDate, $preferredTime, $location, $city, $urgency, $note, $responderTimeout);
-        } else {
-            $stmt = $conn->prepare("INSERT INTO lifeline_requests (recipient_id, preferred_date, preferred_time, location, urgency, note, status, responder_timeout_at) VALUES (?, ?, ?, ?, ?, ?, 'pending', ?)");
-            $stmt->bind_param("sssssss", $userId, $preferredDate, $preferredTime, $location, $urgency, $note, $responderTimeout);
-        }
-        if (!$stmt->execute()) {
-            respond(false, ['error' => 'Failed to create request'], 500);
-        }
-        $requestId = $conn->insert_id;
-        $stmt->close();
-
-        $scheduledAt = date('Y-m-d H:i:s', strtotime("$preferredDate $preferredTime"));
-
-        $stmt = $conn->prepare("INSERT INTO lifeline_confirmations (request_id, recipient_confirmed, recipient_confirmed_at, donor_id, scheduled_at, countdown_start_at) VALUES (?, 1, NOW(), ?, ?, NOW())");
-        $donorParam = $donorId ?: null;
-        $stmt->bind_param("iss", $requestId, $donorParam, $scheduledAt);
-        $stmt->execute();
-        $stmt->close();
-
-        resetReminders($conn, $requestId, $scheduledAt);
-
-        // Notify multiple matching donors (if no specific donor was provided)
-        // Use the blood_type from the request (form), not from recipient profile
-        $notifiedCount = 0;
-        if (!$donorId || $donorId === '') {
-            $notifiedDonors = emergencyNotifyMatchingDonors($conn, $requestId, $userId, $bloodTypeOverride, $city, $scheduledAt, $donorId);
-            $notifiedCount = count($notifiedDonors);
-        }
-
-        respond(true, [
-            'request_id' => $requestId,
-            'donor_assigned' => $donorId ? true : false,
-            'matching_donors_notified' => $notifiedCount
-        ]);
-        break;
-
-    case 'donor_response':
-        ensureRole($profileManager, 'donor');
-
-        $requestId = (int)($_POST['request_id'] ?? 0);
-        $response = $_POST['response'] ?? '';
-        $scheduledAt = trim($_POST['scheduled_at'] ?? '');
-        $location = trim($_POST['location'] ?? '');
-
-        if (!$requestId || !in_array($response, ['approve', 'decline', 'reschedule'], true)) {
-            respond(false, ['error' => 'Invalid donor response payload'], 422);
-        }
-
-        $req = $conn->prepare("SELECT lr.id, lr.recipient_id, lr.status, lc.donor_id, lc.donor_response FROM lifeline_requests lr JOIN lifeline_confirmations lc ON lc.request_id = lr.id WHERE lr.id = ?");
-        $req->bind_param("i", $requestId);
-        $req->execute();
-        $info = $req->get_result()->fetch_assoc();
-        $req->close();
-
-        if (!$info) {
-            respond(false, ['error' => 'Request not found'], 404);
-        }
-
-        // Check if request is already confirmed/assigned to another donor
-        if ($response === 'approve') {
-            // If status is already confirmed, check if it's assigned to someone else
-            if ($info['status'] === 'confirmed') {
-                if (!empty($info['donor_id']) && $info['donor_id'] !== $userId) {
-                    respond(false, ['error' => 'This request has already been assigned to another donor. Please check other available requests.'], 403);
-                }
-            }
-            
-            // If donor_response is already 'approve' and assigned to someone else
-            if ($info['donor_response'] === 'approve' && !empty($info['donor_id']) && $info['donor_id'] !== $userId) {
-                respond(false, ['error' => 'This request has already been accepted by another donor. Please check other available requests.'], 403);
-            }
-            
-            // If there's a donor_id assigned and it's not the current user
-            if (!empty($info['donor_id']) && $info['donor_id'] !== $userId) {
-                respond(false, ['error' => 'This request has already been assigned to another donor. Please check other available requests.'], 403);
-            }
-        }
-
-        // For other responses (decline, reschedule), only allow if they are the assigned donor or no one is assigned
-        if (in_array($response, ['decline', 'reschedule'], true)) {
-            if (!empty($info['donor_id']) && $info['donor_id'] !== $userId) {
-                respond(false, ['error' => 'You are not assigned to this request'], 403);
-            }
-        }
-
-        // Approve/reschedule require a new schedule
-        if (in_array($response, ['approve', 'reschedule'], true)) {
-            if (!$scheduledAt || !$location) {
-                respond(false, ['error' => 'scheduled_at and location are required'], 422);
-            }
-        }
-
-        $conn->begin_transaction();
-        try {
-            // Double-check within transaction to prevent race conditions
-            // Re-check if request is still available for approval
-            if ($response === 'approve') {
-                $checkStmt = $conn->prepare("SELECT lr.status, lc.donor_id, lc.donor_response FROM lifeline_requests lr JOIN lifeline_confirmations lc ON lc.request_id = lr.id WHERE lr.id = ? FOR UPDATE");
-                $checkStmt->bind_param("i", $requestId);
-                $checkStmt->execute();
-                $checkInfo = $checkStmt->get_result()->fetch_assoc();
-                $checkStmt->close();
-                
-                if ($checkInfo) {
-                    // If already confirmed and assigned to someone else
-                    if ($checkInfo['status'] === 'confirmed' && !empty($checkInfo['donor_id']) && $checkInfo['donor_id'] !== $userId) {
-                        $conn->rollback();
-                        respond(false, ['error' => 'This request has already been assigned to another donor. Please check other available requests.'], 403);
-                    }
-                    
-                    // If donor_response is already 'approve' and assigned to someone else
-                    if ($checkInfo['donor_response'] === 'approve' && !empty($checkInfo['donor_id']) && $checkInfo['donor_id'] !== $userId) {
-                        $conn->rollback();
-                        respond(false, ['error' => 'This request has already been accepted by another donor. Please check other available requests.'], 403);
-                    }
-                    
-                    // If there's a donor_id assigned and it's not the current user
-                    if (!empty($checkInfo['donor_id']) && $checkInfo['donor_id'] !== $userId) {
-                        $conn->rollback();
-                        respond(false, ['error' => 'This request has already been assigned to another donor. Please check other available requests.'], 403);
-                    }
-                }
-            }
-            
-            $reschedulePayload = null;
-            $newStatus = $response === 'approve' ? 'confirmed' : ($response === 'decline' ? 'failed' : 'rescheduled');
-
-            $updateReq = $conn->prepare("UPDATE lifeline_requests SET status = ?, location = CASE WHEN ? <> '' THEN ? ELSE location END, responder_timeout_at = DATE_ADD(NOW(), INTERVAL 12 HOUR) WHERE id = ?");
-            $updateReq->bind_param("sssi", $newStatus, $location, $location, $requestId);
-            $updateReq->execute();
-            $updateReq->close();
-
-            if ($response === 'reschedule') {
-                $reschedulePayload = json_encode(['suggested_at' => $scheduledAt, 'location' => $location]);
-            }
-
-            $updateConf = $conn->prepare("UPDATE lifeline_confirmations SET donor_id = ?, donor_response = ?, donor_response_at = NOW(), reschedule_payload = ?, scheduled_at = ?, countdown_start_at = NOW() WHERE request_id = ?");
-            $updateConf->bind_param("ssssi", $userId, $response, $reschedulePayload, $scheduledAt, $requestId);
-            $updateConf->execute();
-            $updateConf->close();
-
-            if ($response === 'approve') {
-                resetReminders($conn, $requestId, $scheduledAt);
-                
-                // Create notification for recipient that donor has approved
-                $recipientId = $info['recipient_id'];
-                $notifPayload = json_encode([
-                    'request_id' => $requestId,
-                    'scheduled_at' => $scheduledAt,
-                    'location' => $location,
-                    'donor_id' => $userId,
-                    'type' => 'donor_approved'
-                ]);
-                $notifStmt = $conn->prepare("INSERT INTO lifeline_notifications (user_id, channel, template_key, payload, status) VALUES (?, 'in_app', 'emergency_donor_approved', ?, 'queued')");
-                $notifStmt->bind_param("ss", $recipientId, $notifPayload);
-                $notifStmt->execute();
-                $notifStmt->close();
-            } else {
-                // Clear reminders on decline/reschedule
-                $clr = $conn->prepare("DELETE FROM lifeline_reminders WHERE request_id = ?");
-                $clr->bind_param("i", $requestId);
-                $clr->execute();
-                $clr->close();
-            }
-
-            $conn->commit();
-        } catch (Exception $e) {
-            $conn->rollback();
-            respond(false, ['error' => 'Failed to update response']);
-        }
-
-        respond(true, ['status' => $newStatus]);
-        break;
-
-    case 'accept_reschedule':
-        ensureRole($profileManager, 'recipient');
-        $requestId = (int)($_POST['request_id'] ?? 0);
-        $accept = ($_POST['accept'] ?? '') === '1';
-        if (!$requestId) {
-            respond(false, ['error' => 'Request id required'], 422);
-        }
-
-        // fetch reschedule payload
-        $infoStmt = $conn->prepare("
-            SELECT lr.recipient_id, lc.reschedule_payload
-            FROM lifeline_requests lr
-            JOIN lifeline_confirmations lc ON lc.request_id = lr.id
-            WHERE lr.id = ?
-        ");
-        $infoStmt->bind_param("i", $requestId);
-        $infoStmt->execute();
-        $info = $infoStmt->get_result()->fetch_assoc();
-        $infoStmt->close();
-
-        if (!$info || $info['recipient_id'] !== $userId) {
-            respond(false, ['error' => 'Unauthorized'], 403);
-        }
-
-        if (!$info['reschedule_payload']) {
-            respond(false, ['error' => 'No reschedule data'], 400);
-        }
-
-        $payload = json_decode($info['reschedule_payload'], true);
-        if ($accept) {
-            $newScheduled = $payload['suggested_at'] ?? null;
-            $location = $payload['location'] ?? null;
-            if (!$newScheduled || !$location) {
-                respond(false, ['error' => 'Invalid reschedule payload'], 400);
-            }
-
-            $conn->begin_transaction();
-            try {
-                $updateReq = $conn->prepare("UPDATE lifeline_requests SET status='confirmed', location=?, responder_timeout_at=DATE_ADD(NOW(), INTERVAL 12 HOUR) WHERE id=?");
-                $updateReq->bind_param("si", $location, $requestId);
-                $updateReq->execute();
-                $updateReq->close();
-
-                $updateConf = $conn->prepare("UPDATE lifeline_confirmations SET reschedule_payload=NULL, donor_response='approve', donor_response_at=NOW(), scheduled_at=?, countdown_start_at=NOW() WHERE request_id=?");
-                $updateConf->bind_param("si", $newScheduled, $requestId);
-                $updateConf->execute();
-                $updateConf->close();
-
-                resetReminders($conn, $requestId, $newScheduled);
-                $conn->commit();
-            } catch (Exception $e) {
-                $conn->rollback();
-                respond(false, ['error' => 'Failed to accept reschedule'], 500);
-            }
-            respond(true, ['status' => 'confirmed']);
-        } else {
-            // decline reschedule keeps request pending for recipient to recreate
-            $updateConf = $conn->prepare("UPDATE lifeline_confirmations SET reschedule_payload=NULL WHERE request_id=?");
-            $updateConf->bind_param("i", $requestId);
-            $updateConf->execute();
-            $updateConf->close();
-
-            $updateReq = $conn->prepare("UPDATE lifeline_requests SET status='failed', responder_timeout_at=NULL WHERE id=?");
-            $updateReq->bind_param("i", $requestId);
-            $updateReq->execute();
-            $updateReq->close();
-
-            respond(true, ['status' => 'failed']);
-        }
-        break;
-
-    case 'post_check':
-        ensureRole($profileManager, 'recipient');
-        $requestId = (int)($_POST['request_id'] ?? 0);
-        $result = $_POST['result'] ?? '';
-        if (!$requestId || !in_array($result, ['completed', 'failed', 'rescheduled'], true)) {
-            respond(false, ['error' => 'Invalid post-check data'], 422);
-        }
-
-        $req = $conn->prepare("SELECT id, recipient_id FROM lifeline_requests WHERE id = ?");
-        $req->bind_param("i", $requestId);
-        $req->execute();
-        $info = $req->get_result()->fetch_assoc();
-        $req->close();
-
-        if (!$info || $info['recipient_id'] !== $userId) {
-            respond(false, ['error' => 'Request not found or unauthorized'], 404);
-        }
-
-        $update = $conn->prepare("UPDATE lifeline_requests SET status = ?, updated_at = NOW() WHERE id = ?");
-        $update->bind_param("si", $result, $requestId);
-        $update->execute();
-        $update->close();
-
-        respond(true, ['status' => $result]);
-        break;
-
-    case 'mark_notification_read':
-        $notificationId = (int)($_POST['notification_id'] ?? 0);
-        if (!$notificationId) {
-            respond(false, ['error' => 'Notification ID is required'], 422);
-        }
-        
-        // Verify notification belongs to current user
-        $checkStmt = $conn->prepare("SELECT user_id FROM lifeline_notifications WHERE id = ? AND user_id = ? LIMIT 1");
-        $checkStmt->bind_param("is", $notificationId, $userId);
+/**
+ * Notify matching donors about a new request
+ */
+function notifyMatchingDonors($conn, $requestId, $bloodType, $city) {
+    require_once __DIR__ . '/email-helper.php';
+    
+    $donors = findMatchingDonors($conn, $bloodType, $city);
+    $notifiedCount = 0;
+    
+    // Get request details for email
+    $reqStmt = $conn->prepare("SELECT lr.*, lp.full_name, lp.city, lp.contact_number_primary FROM lifeline_requests lr INNER JOIN lifeline_profiles lp ON lp.recipient_id = lr.recipient_id WHERE lr.id = ? LIMIT 1");
+    $reqStmt->bind_param("i", $requestId);
+    $reqStmt->execute();
+    $reqResult = $reqStmt->get_result();
+    $requestData = $reqResult->fetch_assoc();
+    $reqStmt->close();
+    
+    foreach ($donors as $donor) {
+        // Check if notification already exists
+        $checkStmt = $conn->prepare("SELECT id FROM lifeline_notifications WHERE request_id = ? AND donor_id = ? LIMIT 1");
+        $checkStmt->bind_param("is", $requestId, $donor['user_id']);
         $checkStmt->execute();
         $checkResult = $checkStmt->get_result();
+        
+        if ($checkResult->num_rows === 0) {
+            // Create notification in lifeline_notifications table
+            $notifStmt = $conn->prepare("INSERT INTO lifeline_notifications (request_id, donor_id, status) VALUES (?, ?, 'sent')");
+            $notifStmt->bind_param("is", $requestId, $donor['user_id']);
+            $notifStmt->execute();
+            $notifStmt->close();
+            
+            // Create notification in emergency_notifications table for notification bell
+            $payload = json_encode([
+                'request_id' => $requestId,
+                'blood_type' => $bloodType,
+                'city' => $city,
+                'type' => 'lifeline'
+            ]);
+            $bellNotifStmt = $conn->prepare("INSERT INTO emergency_notifications (user_id, channel, template_key, payload, status) VALUES (?, 'in_app', 'lifeline_new_request', ?, 'queued')");
+            $bellNotifStmt->bind_param("ss", $donor['user_id'], $payload);
+            $bellNotifStmt->execute();
+            $bellNotifStmt->close();
+            
+            // Send email to donor
+            if (!empty($donor['email'])) {
+                try {
+                    $mail = getConfiguredMailer();
+                    $mail->addAddress($donor['email'], ($donor['first_name'] ?? '') . ' ' . ($donor['last_name'] ?? ''));
+                    $mail->Subject = 'New LifeLine Blood Donation Request - ' . $bloodType;
+                    $mail->isHTML(true);
+                    
+                    $baseUrl = rtrim(env('BASE_URL', 'http://localhost/blood_konnector'), '/');
+                    $viewUrl = $baseUrl . '/lifeline-donor-requests';
+                    
+                    $mail->Body = '
+                    <div style="font-family: Arial, sans-serif; max-width:600px; margin:20px auto; border:1px solid #eee; border-radius:8px; overflow:hidden; box-shadow:0 0 8px rgba(0,0,0,0.05);">
+                        <div style="background-color:#EA062B; color:white; padding:20px; text-align:center;">
+                            <h2 style="margin:0; color:white;">New LifeLine Blood Request</h2>
+                        </div>
+                        <div style="padding:20px; color:#333;">
+                            <p style="margin:10px 0;">Hi <strong>' . htmlspecialchars($donor['first_name'] ?? 'Donor') . '</strong>,</p>
+                            <p style="margin:10px 0;">A new LifeLine blood donation request has been created that matches your profile:</p>
+                            <div style="background:#f8f9fa; padding:15px; border-radius:6px; margin:20px 0;">
+                                <p style="margin:5px 0;"><strong>Blood Type:</strong> ' . htmlspecialchars($bloodType) . '</p>
+                                <p style="margin:5px 0;"><strong>Location:</strong> ' . htmlspecialchars($city) . '</p>
+                                <p style="margin:5px 0;"><strong>Recipient:</strong> ' . htmlspecialchars($requestData['full_name'] ?? 'N/A') . '</p>
+                            </div>
+                            <table width="100%" cellpadding="0" cellspacing="0" style="margin:30px 0;">
+                                <tr>
+                                    <td align="center">
+                                        <a href="' . $viewUrl . '" target="_blank" style="background-color:#EA062B; color:#ffffff; padding:14px 28px; border-radius:6px; text-decoration:none; font-weight:bold; display:inline-block; font-size:16px;">
+                                            View Request
+                                        </a>
+                                    </td>
+                                </tr>
+                            </table>
+                            <p style="margin-top:30px; font-size:13px; color:#666;">Regards,<br><strong>The Blood Konnector Team</strong></p>
+                        </div>
+                    </div>';
+                    
+                    $mail->AltBody = "Hi " . ($donor['first_name'] ?? 'Donor') . ",\n\nA new LifeLine blood donation request has been created.\n\nBlood Type: " . $bloodType . "\nLocation: " . $city . "\n\nView the request: " . $viewUrl . "\n\nRegards,\nThe Blood Konnector Team";
+                    $mail->send();
+                } catch (Exception $e) {
+                    error_log("LifeLine email failed for donor {$donor['user_id']}: " . $e->getMessage());
+                }
+            }
+            
+            $notifiedCount++;
+        }
         $checkStmt->close();
-        
-        if (!$checkResult || $checkResult->num_rows === 0) {
-            respond(false, ['error' => 'Notification not found or unauthorized'], 404);
-        }
-        
-        // Mark as read (update status to 'sent')
-        $updateStmt = $conn->prepare("UPDATE lifeline_notifications SET status = 'sent', sent_at = NOW() WHERE id = ? AND user_id = ?");
-        $updateStmt->bind_param("is", $notificationId, $userId);
-        if ($updateStmt->execute()) {
-            respond(true, ['message' => 'Notification marked as read']);
-        } else {
-            respond(false, ['error' => 'Failed to update notification'], 500);
-        }
-        $updateStmt->close();
-        break;
-
-    case 'mark_all_notifications_read':
-        // Mark all in_app notifications for current user as read
-        $updateStmt = $conn->prepare("UPDATE lifeline_notifications SET status = 'sent', sent_at = NOW() WHERE user_id = ? AND channel = 'in_app' AND status = 'queued'");
-        $updateStmt->bind_param("s", $userId);
-        if ($updateStmt->execute()) {
-            $affected = $updateStmt->affected_rows;
-            respond(true, ['message' => 'All notifications marked as read', 'count' => $affected]);
-        } else {
-            respond(false, ['error' => 'Failed to update notifications'], 500);
-        }
-        $updateStmt->close();
-        break;
-
-    case 'get_unread_count':
-        $countStmt = $conn->prepare("SELECT COUNT(*) as cnt FROM lifeline_notifications WHERE user_id = ? AND channel = 'in_app' AND status = 'queued' AND template_key IN ('emergency_new_request', 'emergency_donor_approved')");
-        $countStmt->bind_param("s", $userId);
-        $countStmt->execute();
-        $countResult = $countStmt->get_result();
-        $countRow = $countResult->fetch_assoc();
-        $countStmt->close();
-        respond(true, ['unread_count' => (int)($countRow['cnt'] ?? 0)]);
-        break;
-
-    case 'get_notifications':
-        // Fetch emergency notifications for current user (legacy lifeline API retains notification storage in lifeline_notifications)
-        $notifications = [];
-        $notifStmt = $conn->prepare("
-            SELECT ln.*
-            FROM lifeline_notifications ln
-            WHERE ln.user_id = ?
-              AND ln.channel = 'in_app'
-              AND ln.template_key IN ('emergency_new_request', 'emergency_donor_approved')
-            ORDER BY ln.created_at DESC
-            LIMIT 10
-        ");
-        $notifStmt->bind_param("s", $userId);
-        $notifStmt->execute();
-        $notifResult = $notifStmt->get_result();
-        while ($row = $notifResult->fetch_assoc()) {
-            // Parse payload to get request details
-            $payload = json_decode($row['payload'] ?? '{}', true) ?: [];
-            $requestId = $payload['request_id'] ?? null;
-            $donorId = $payload['donor_id'] ?? null;
-            
-            // Fetch request details if available
-            if ($requestId) {
-                $reqStmt = $conn->prepare("SELECT lr.id, lr.preferred_date, lr.preferred_time, lr.location, lr.blood_type, lr.city
-                                           FROM lifeline_requests lr
-                                           WHERE lr.id = ? LIMIT 1");
-                $reqStmt->bind_param("i", $requestId);
-                $reqStmt->execute();
-                $reqResult = $reqStmt->get_result();
-                if ($reqResult && $reqResult->num_rows > 0) {
-                    $reqData = $reqResult->fetch_assoc();
-                    $row = array_merge($row, $reqData);
-                }
-                $reqStmt->close();
-            }
-            
-            // Fetch donor details if available (for recipient notifications)
-            if ($donorId) {
-                $donorStmt = $conn->prepare("SELECT u.first_name AS donor_first, u.last_name AS donor_last
-                                             FROM users u
-                                             WHERE u.user_id = ? LIMIT 1");
-                $donorStmt->bind_param("s", $donorId);
-                $donorStmt->execute();
-                $donorResult = $donorStmt->get_result();
-                if ($donorResult && $donorResult->num_rows > 0) {
-                    $donorData = $donorResult->fetch_assoc();
-                    $row = array_merge($row, $donorData);
-                }
-                $donorStmt->close();
-            }
-            
-            // Store parsed payload as object
-            $row['payload_obj'] = $payload;
-            $notifications[] = $row;
-        }
-        $notifStmt->close();
-        
-        // Count unread notifications
-        $unreadCount = 0;
-        $unreadStmt = $conn->prepare("SELECT COUNT(*) as cnt FROM lifeline_notifications WHERE user_id = ? AND channel = 'in_app' AND status = 'queued' AND template_key IN ('emergency_new_request', 'emergency_donor_approved')");
-        $unreadStmt->bind_param("s", $userId);
-        $unreadStmt->execute();
-        $unreadResult = $unreadStmt->get_result();
-        if ($unreadResult && $unreadResult->num_rows > 0) {
-            $unreadRow = $unreadResult->fetch_assoc();
-            $unreadCount = (int)($unreadRow['cnt'] ?? 0);
-        }
-        $unreadStmt->close();
-        
-        respond(true, ['notifications' => $notifications, 'unread_count' => $unreadCount]);
-        break;
-
-    case 'feedback':
-        $role = $_POST['role'] ?? '';
-        $requestId = (int)($_POST['request_id'] ?? 0);
-        $rating = (int)($_POST['rating'] ?? 0);
-        $remarks = trim($_POST['remarks'] ?? '');
-
-        if (!in_array($role, ['donor', 'recipient'], true) || $rating < 1 || $rating > 5 || !$requestId) {
-            respond(false, ['error' => 'Invalid feedback payload'], 422);
-        }
-
-        // Validate participation
-        $req = $conn->prepare("SELECT lr.recipient_id, lc.donor_id FROM lifeline_requests lr JOIN lifeline_confirmations lc ON lc.request_id = lr.id WHERE lr.id = ?");
-        $req->bind_param("i", $requestId);
-        $req->execute();
-        $info = $req->get_result()->fetch_assoc();
-        $req->close();
-
-        if (!$info) {
-            respond(false, ['error' => 'Request not found'], 404);
-        }
-
-        $isRecipient = $info['recipient_id'] === $userId;
-        $isDonor = $info['donor_id'] === $userId;
-        if (($role === 'recipient' && !$isRecipient) || ($role === 'donor' && !$isDonor)) {
-            respond(false, ['error' => 'Unauthorized feedback'], 403);
-        }
-
-        $toUser = $role === 'recipient' ? $info['donor_id'] : $info['recipient_id'];
-
-        $stmt = $conn->prepare("INSERT INTO lifeline_feedback (request_id, from_user_id, to_user_id, role, rating, remarks) VALUES (?, ?, ?, ?, ?, ?)");
-        $stmt->bind_param("isssis", $requestId, $userId, $toUser, $role, $rating, $remarks);
-        if (!$stmt->execute()) {
-            respond(false, ['error' => 'Failed to submit feedback'], 500);
-        }
-        $stmt->close();
-
-        respond(true, ['feedback_id' => $conn->insert_id]);
-        break;
-
-    default:
-        respond(false, ['error' => 'Unknown action'], 400);
+    }
+    
+    return $notifiedCount;
 }
 
+// Handle file upload
+function handleFileUpload($fileInput, $prefix = 'lifeline') {
+    if (!isset($_FILES[$fileInput]) || $_FILES[$fileInput]['error'] !== UPLOAD_ERR_OK) {
+        return null;
+    }
+    
+    $file = $_FILES[$fileInput];
+    $allowedTypes = ['application/pdf', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', 'image/jpeg', 'image/png', 'image/jpg'];
+    $maxSize = 5 * 1024 * 1024; // 5MB
+    
+    // Check file extension as well
+    $extension = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
+    $allowedExtensions = ['pdf', 'doc', 'docx', 'jpg', 'jpeg', 'png'];
+    
+    if (!in_array($extension, $allowedExtensions)) {
+        return null;
+    }
+    
+    if ($file['size'] > $maxSize) {
+        return null;
+    }
+    
+    // Get the project root directory (two levels up from assets/lib)
+    $projectRoot = dirname(dirname(__DIR__));
+    $uploadDir = $projectRoot . '/uploads/lifeline_documents/';
+    
+    if (!is_dir($uploadDir)) {
+        mkdir($uploadDir, 0755, true);
+    }
+    
+    $filename = $prefix . '_' . uniqid('', true) . '.' . $extension;
+    $filepath = $uploadDir . $filename;
+    
+    if (move_uploaded_file($file['tmp_name'], $filepath)) {
+        // Return relative path from project root
+        return 'uploads/lifeline_documents/' . $filename;
+    }
+    
+    return null;
+}
+
+// Route actions
+switch ($action) {
+    case 'save_profile':
+        ensureRecipient($profileManager);
+        
+        // Personal Information
+        $fullName = trim($_POST['full_name'] ?? '');
+        $cnicNationalId = trim($_POST['cnic_national_id'] ?? '');
+        $dateOfBirth = trim($_POST['date_of_birth'] ?? '');
+        $gender = trim($_POST['gender'] ?? '');
+        $bloodType = trim($_POST['blood_type'] ?? '');
+        $contactPrimary = trim($_POST['contact_number_primary'] ?? '');
+        $contactAlternate = trim($_POST['contact_number_alternate'] ?? '');
+        $emailAddress = trim($_POST['email_address'] ?? '');
+        $residentialAddress = trim($_POST['residential_address'] ?? '');
+        $city = trim($_POST['city'] ?? '');
+        $provinceState = trim($_POST['province_state'] ?? '');
+        
+        // Medical Information
+        $hospitalClinicName = trim($_POST['hospital_clinic_name'] ?? '');
+        $doctorConsultantName = trim($_POST['doctor_consultant_name'] ?? '');
+        $hospitalContactNumber = trim($_POST['hospital_contact_number'] ?? '');
+        $healthCondition = trim($_POST['health_condition'] ?? '');
+        $frequencyOfRequirement = trim($_POST['frequency_of_requirement'] ?? 'on-demand');
+        $averageUnitsPerSession = (int)($_POST['average_units_per_session'] ?? 1);
+        $preferredDonorType = trim($_POST['preferred_donor_type'] ?? 'any');
+        $specialInstructions = trim($_POST['special_instructions'] ?? '');
+        
+        // Emergency & Verification
+        $emergencyContactName = trim($_POST['emergency_contact_name'] ?? '');
+        $emergencyContactRelation = trim($_POST['emergency_contact_relation'] ?? '');
+        $emergencyContactNumber = trim($_POST['emergency_contact_number'] ?? '');
+        
+        // Consent & Declaration - all checkboxes must be checked
+        $consentDeclaration = (isset($_POST['consent_declaration']) && isset($_POST['consent_storage']) && 
+                               isset($_POST['consent_contact']) && isset($_POST['consent_liability'])) ? 1 : 0;
+        $declarationDate = trim($_POST['declaration_date'] ?? date('Y-m-d'));
+        
+        // Validation
+        if (empty($fullName) || empty($cnicNationalId) || empty($dateOfBirth) || empty($gender) || 
+            empty($bloodType) || empty($contactPrimary) || empty($residentialAddress) || 
+            empty($city) || empty($provinceState) || empty($emergencyContactName) || 
+            empty($emergencyContactRelation) || empty($emergencyContactNumber)) {
+            respond(false, ['error' => 'All required fields must be filled']);
+        }
+        
+        if (!$consentDeclaration) {
+            respond(false, ['error' => 'You must agree to all consent declarations']);
+        }
+        
+        // Check if profile already exists
+        $checkStmt = $conn->prepare("SELECT verification_letter_path, cnic_copy_path, medical_proof_path, signature_name FROM lifeline_profiles WHERE recipient_id = ? LIMIT 1");
+        $checkStmt->bind_param("s", $userId);
+        $checkStmt->execute();
+        $checkResult = $checkStmt->get_result();
+        $existingProfile = $checkResult->num_rows > 0 ? $checkResult->fetch_assoc() : null;
+        $checkStmt->close();
+        
+        // Handle file uploads
+        $verificationLetterPath = handleFileUpload('verification_letter', 'verification');
+        $cnicCopyPath = handleFileUpload('cnic_copy', 'cnic');
+        $medicalProofPath = handleFileUpload('medical_proof', 'medical');
+        
+        // Signature is now a text field (name)
+        $signatureName = trim($_POST['signature_name'] ?? '');
+        
+        // For new profiles, required files must be uploaded
+        if (!$existingProfile) {
+            if (empty($verificationLetterPath)) {
+                respond(false, ['error' => 'Hospital/Doctor Verification Letter is required']);
+            }
+            if (empty($cnicCopyPath)) {
+                respond(false, ['error' => 'CNIC Copy is required']);
+            }
+            if (empty($signatureName)) {
+                respond(false, ['error' => 'Signature name is required']);
+            }
+        } else {
+            // For updates, use existing paths if new files not uploaded
+            // First check hidden input fields (sent from form), then fallback to database
+            if (empty($verificationLetterPath)) {
+                $existingVerification = trim($_POST['existing_verification_letter'] ?? '');
+                $verificationLetterPath = !empty($existingVerification) ? $existingVerification : $existingProfile['verification_letter_path'];
+            }
+            if (empty($cnicCopyPath)) {
+                $existingCnic = trim($_POST['existing_cnic_copy'] ?? '');
+                $cnicCopyPath = !empty($existingCnic) ? $existingCnic : $existingProfile['cnic_copy_path'];
+            }
+            if (empty($medicalProofPath)) {
+                $existingMedical = trim($_POST['existing_medical_proof'] ?? '');
+                $medicalProofPath = !empty($existingMedical) ? $existingMedical : ($existingProfile['medical_proof_path'] ?? null);
+            }
+            // For signature name, use new value if provided, otherwise keep existing
+            if (empty($signatureName)) {
+                $signatureName = $existingProfile['signature_name'] ?? '';
+            }
+            
+            // Validate that required files still exist (either new upload or existing)
+            if (empty($verificationLetterPath)) {
+                respond(false, ['error' => 'Hospital/Doctor Verification Letter is required']);
+            }
+            if (empty($cnicCopyPath)) {
+                respond(false, ['error' => 'CNIC Copy is required']);
+            }
+        }
+        
+        if ($existingProfile) {
+            $updateStmt = $conn->prepare("UPDATE lifeline_profiles SET 
+                full_name = ?, cnic_national_id = ?, date_of_birth = ?, gender = ?, blood_type = ?,
+                contact_number_primary = ?, contact_number_alternate = ?, email_address = ?,
+                residential_address = ?, city = ?, province_state = ?,
+                hospital_clinic_name = ?, doctor_consultant_name = ?, hospital_contact_number = ?,
+                health_condition = ?, frequency_of_requirement = ?, average_units_per_session = ?,
+                preferred_donor_type = ?, special_instructions = ?,
+                emergency_contact_name = ?, emergency_contact_relation = ?, emergency_contact_number = ?,
+                verification_letter_path = ?, cnic_copy_path = ?, medical_proof_path = ?,
+                consent_declaration = ?, signature_name = ?, declaration_date = ?
+                WHERE recipient_id = ?");
+            $updateStmt->bind_param(
+                "ssssssssssssssssissssssssisss",
+                $fullName,
+                $cnicNationalId,
+                $dateOfBirth,
+                $gender,
+                $bloodType,
+                $contactPrimary,
+                $contactAlternate,
+                $emailAddress,
+                $residentialAddress,
+                $city,
+                $provinceState,
+                $hospitalClinicName,
+                $doctorConsultantName,
+                $hospitalContactNumber,
+                $healthCondition,
+                $frequencyOfRequirement,
+                $averageUnitsPerSession,
+                $preferredDonorType,
+                $specialInstructions,
+                $emergencyContactName,
+                $emergencyContactRelation,
+                $emergencyContactNumber,
+                $verificationLetterPath,
+                $cnicCopyPath,
+                $medicalProofPath,
+                $consentDeclaration,
+                $signatureName,
+                $declarationDate,
+                $userId
+            );
+            
+            if (!$updateStmt->execute()) {
+                $updateStmt->close();
+                respond(false, ['error' => 'Failed to update profile: ' . $conn->error]);
+            }
+            $updateStmt->close();
+        } else {
+            // Insert new profile
+            // Count: 29 parameters total
+            $insertStmt = $conn->prepare("INSERT INTO lifeline_profiles (
+                recipient_id, full_name, cnic_national_id, date_of_birth, gender, blood_type,
+                contact_number_primary, contact_number_alternate, email_address,
+                residential_address, city, province_state,
+                hospital_clinic_name, doctor_consultant_name, hospital_contact_number,
+                health_condition, frequency_of_requirement, average_units_per_session,
+                preferred_donor_type, special_instructions,
+                emergency_contact_name, emergency_contact_relation, emergency_contact_number,
+                verification_letter_path, cnic_copy_path, medical_proof_path,
+                consent_declaration, signature_name, declaration_date
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
+            $insertStmt->bind_param("ssssssssssssssssissssssssssss", 
+                $userId, $fullName, $cnicNationalId, $dateOfBirth, $gender, $bloodType,
+                $contactPrimary, $contactAlternate, $emailAddress,
+                $residentialAddress, $city, $provinceState,
+                $hospitalClinicName, $doctorConsultantName, $hospitalContactNumber,
+                $healthCondition, $frequencyOfRequirement, $averageUnitsPerSession,
+                $preferredDonorType, $specialInstructions,
+                $emergencyContactName, $emergencyContactRelation, $emergencyContactNumber,
+                $verificationLetterPath, $cnicCopyPath, $medicalProofPath,
+                $consentDeclaration, $signatureName, $declarationDate);
+            
+            if (!$insertStmt->execute()) {
+                $insertStmt->close();
+                respond(false, ['error' => 'Failed to save profile: ' . $conn->error]);
+            }
+            $insertStmt->close();
+        }
+        
+        respond(true, ['message' => 'Profile saved successfully']);
+        break;
+        
+    case 'generate_request':
+        ensureRecipient($profileManager);
+        
+        // Get recipient's lifeline profile
+        $profileStmt = $conn->prepare("SELECT * FROM lifeline_profiles WHERE recipient_id = ? LIMIT 1");
+        $profileStmt->bind_param("s", $userId);
+        $profileStmt->execute();
+        $profileResult = $profileStmt->get_result();
+        
+        if ($profileResult->num_rows === 0) {
+            $profileStmt->close();
+            respond(false, ['error' => 'Please complete your LifeLine profile first']);
+        }
+        
+        $profile = $profileResult->fetch_assoc();
+        $profileStmt->close();
+        
+        $bloodType = $profile['blood_type'];
+        $city = $profile['city'];
+        $urgency = $_POST['urgency'] ?? 'normal';
+        $note = trim($_POST['note'] ?? '');
+        
+        // Create request
+        $insertStmt = $conn->prepare("INSERT INTO lifeline_requests (recipient_id, blood_type, city, urgency, note, status) VALUES (?, ?, ?, ?, ?, 'pending')");
+        $insertStmt->bind_param("sssss", $userId, $bloodType, $city, $urgency, $note);
+        
+        if (!$insertStmt->execute()) {
+            $insertStmt->close();
+            respond(false, ['error' => 'Failed to create request']);
+        }
+        
+        $requestId = $conn->insert_id;
+        $insertStmt->close();
+        
+        // Notify matching donors
+        $notifiedCount = notifyMatchingDonors($conn, $requestId, $bloodType, $city);
+        
+        respond(true, [
+            'request_id' => $requestId,
+            'notified_donors' => $notifiedCount,
+            'message' => 'Request created successfully'
+        ]);
+        break;
+        
+    case 'complete_request':
+        ensureRecipient($profileManager);
+        
+        $requestId = (int)($_POST['request_id'] ?? 0);
+        
+        if ($requestId <= 0) {
+            respond(false, ['error' => 'Invalid request ID']);
+        }
+        
+        // Verify request belongs to recipient
+        $verifyStmt = $conn->prepare("SELECT id FROM lifeline_requests WHERE id = ? AND recipient_id = ? LIMIT 1");
+        $verifyStmt->bind_param("is", $requestId, $userId);
+        $verifyStmt->execute();
+        $verifyResult = $verifyStmt->get_result();
+        
+        if ($verifyResult->num_rows === 0) {
+            $verifyStmt->close();
+            respond(false, ['error' => 'Request not found or access denied']);
+        }
+        $verifyStmt->close();
+        
+        // Update request status
+        $updateStmt = $conn->prepare("UPDATE lifeline_requests SET status = 'completed', completed_at = NOW() WHERE id = ?");
+        $updateStmt->bind_param("i", $requestId);
+        
+        if ($updateStmt->execute()) {
+            $updateStmt->close();
+            respond(true, ['message' => 'Request marked as completed']);
+        } else {
+            $updateStmt->close();
+            respond(false, ['error' => 'Failed to update request']);
+        }
+        break;
+        
+    case 'cancel_request':
+        ensureRecipient($profileManager);
+        
+        $requestId = (int)($_POST['request_id'] ?? 0);
+        
+        if ($requestId <= 0) {
+            respond(false, ['error' => 'Invalid request ID']);
+        }
+        
+        // Verify request belongs to recipient
+        $verifyStmt = $conn->prepare("SELECT id FROM lifeline_requests WHERE id = ? AND recipient_id = ? LIMIT 1");
+        $verifyStmt->bind_param("is", $requestId, $userId);
+        $verifyStmt->execute();
+        $verifyResult = $verifyStmt->get_result();
+        
+        if ($verifyResult->num_rows === 0) {
+            $verifyStmt->close();
+            respond(false, ['error' => 'Request not found or access denied']);
+        }
+        $verifyStmt->close();
+        
+        // Update request status
+        $updateStmt = $conn->prepare("UPDATE lifeline_requests SET status = 'cancelled' WHERE id = ?");
+        $updateStmt->bind_param("i", $requestId);
+        
+        if ($updateStmt->execute()) {
+            $updateStmt->close();
+            respond(true, ['message' => 'Request cancelled']);
+        } else {
+            $updateStmt->close();
+            respond(false, ['error' => 'Failed to cancel request']);
+        }
+        break;
+        
+    case 'donor_accept':
+        // Donor accepting a request
+        if (!$profileManager->hasRole('donor')) {
+            respond(false, ['error' => 'Donor role required'], 403);
+        }
+        
+        $requestId = (int)($_POST['request_id'] ?? 0);
+        
+        if ($requestId <= 0) {
+            respond(false, ['error' => 'Invalid request ID']);
+        }
+        
+        // Check if request exists and is pending
+        $checkStmt = $conn->prepare("SELECT id, status, accepted_donor_id FROM lifeline_requests WHERE id = ? LIMIT 1");
+        $checkStmt->bind_param("i", $requestId);
+        $checkStmt->execute();
+        $checkResult = $checkStmt->get_result();
+        
+        if ($checkResult->num_rows === 0) {
+            $checkStmt->close();
+            respond(false, ['error' => 'Request not found']);
+        }
+        
+        $request = $checkResult->fetch_assoc();
+        $checkStmt->close();
+        
+        if ($request['status'] !== 'pending') {
+            respond(false, ['error' => 'Request is no longer available']);
+        }
+        
+        if (!empty($request['accepted_donor_id']) && $request['accepted_donor_id'] !== $userId) {
+            respond(false, ['error' => 'Request has already been accepted by another donor']);
+        }
+        
+        // Update request to accepted
+        $updateStmt = $conn->prepare("UPDATE lifeline_requests SET status = 'accepted', accepted_donor_id = ?, accepted_at = NOW() WHERE id = ?");
+        $updateStmt->bind_param("si", $userId, $requestId);
+        
+        if (!$updateStmt->execute()) {
+            $updateStmt->close();
+            respond(false, ['error' => 'Failed to accept request']);
+        }
+        $updateStmt->close();
+        
+        // Update notification status
+        $notifStmt = $conn->prepare("UPDATE lifeline_notifications SET status = 'accepted', responded_at = NOW() WHERE request_id = ? AND donor_id = ?");
+        $notifStmt->bind_param("is", $requestId, $userId);
+        $notifStmt->execute();
+        $notifStmt->close();
+        
+        // Create donor response record
+        $responseStmt = $conn->prepare("INSERT INTO lifeline_donor_responses (request_id, donor_id, response, message) VALUES (?, ?, 'accept', ?) ON DUPLICATE KEY UPDATE response = 'accept', message = ?");
+        $message = trim($_POST['message'] ?? '');
+        $responseStmt->bind_param("isss", $requestId, $userId, $message, $message);
+        $responseStmt->execute();
+        $responseStmt->close();
+        
+        // Get recipient and donor details for notification and email
+        $detailsStmt = $conn->prepare("
+            SELECT lr.recipient_id, lp.full_name AS recipient_name, lp.email_address AS recipient_email,
+                   u.first_name AS donor_first, u.last_name AS donor_last, u.email AS donor_email
+            FROM lifeline_requests lr
+            INNER JOIN lifeline_profiles lp ON lp.recipient_id = lr.recipient_id
+            INNER JOIN users u ON u.user_id = ?
+            WHERE lr.id = ? LIMIT 1
+        ");
+        $detailsStmt->bind_param("si", $userId, $requestId);
+        $detailsStmt->execute();
+        $detailsResult = $detailsStmt->get_result();
+        $details = $detailsResult->fetch_assoc();
+        $detailsStmt->close();
+        
+        // Create notification for recipient in emergency_notifications table
+        if ($details && !empty($details['recipient_id'])) {
+            require_once __DIR__ . '/email-helper.php';
+            
+            $payload = json_encode([
+                'request_id' => $requestId,
+                'donor_id' => $userId,
+                'type' => 'lifeline'
+            ]);
+            $recipientNotifStmt = $conn->prepare("INSERT INTO emergency_notifications (user_id, channel, template_key, payload, status) VALUES (?, 'in_app', 'lifeline_donor_approved', ?, 'queued')");
+            $recipientNotifStmt->bind_param("ss", $details['recipient_id'], $payload);
+            $recipientNotifStmt->execute();
+            $recipientNotifStmt->close();
+            
+            // Send email to recipient
+            if (!empty($details['recipient_email'])) {
+                try {
+                    $mail = getConfiguredMailer();
+                    $mail->addAddress($details['recipient_email'], $details['recipient_name']);
+                    $mail->Subject = 'LifeLine Request Accepted - Donor Available';
+                    $mail->isHTML(true);
+                    
+                    $baseUrl = rtrim(env('BASE_URL', 'http://localhost/blood_konnector'), '/');
+                    $viewUrl = $baseUrl . '/lifeline-panel';
+                    $donorName = trim(($details['donor_first'] ?? '') . ' ' . ($details['donor_last'] ?? ''));
+                    
+                    $mail->Body = '
+                    <div style="font-family: Arial, sans-serif; max-width:600px; margin:20px auto; border:1px solid #eee; border-radius:8px; overflow:hidden; box-shadow:0 0 8px rgba(0,0,0,0.05);">
+                        <div style="background-color:#EA062B; color:white; padding:20px; text-align:center;">
+                            <h2 style="margin:0; color:white;">Request Accepted!</h2>
+                        </div>
+                        <div style="padding:20px; color:#333;">
+                            <p style="margin:10px 0;">Hi <strong>' . htmlspecialchars($details['recipient_name']) . '</strong>,</p>
+                            <p style="margin:10px 0;">Great news! A donor has accepted your LifeLine blood donation request.</p>
+                            <div style="background:#f8f9fa; padding:15px; border-radius:6px; margin:20px 0;">
+                                <p style="margin:5px 0;"><strong>Donor:</strong> ' . htmlspecialchars($donorName) . '</p>
+                                <p style="margin:5px 0;">You can now contact the donor through the chat system to coordinate the donation.</p>
+                            </div>
+                            <table width="100%" cellpadding="0" cellspacing="0" style="margin:30px 0;">
+                                <tr>
+                                    <td align="center">
+                                        <a href="' . $viewUrl . '" target="_blank" style="background-color:#EA062B; color:#ffffff; padding:14px 28px; border-radius:6px; text-decoration:none; font-weight:bold; display:inline-block; font-size:16px;">
+                                            View Request
+                                        </a>
+                                    </td>
+                                </tr>
+                            </table>
+                            <p style="margin-top:30px; font-size:13px; color:#666;">Regards,<br><strong>The Blood Konnector Team</strong></p>
+                        </div>
+                    </div>';
+                    
+                    $mail->AltBody = "Hi " . $details['recipient_name'] . ",\n\nGreat news! A donor has accepted your LifeLine blood donation request.\n\nDonor: " . $donorName . "\n\nView the request: " . $viewUrl . "\n\nRegards,\nThe Blood Konnector Team";
+                    $mail->send();
+                } catch (Exception $e) {
+                    error_log("LifeLine acceptance email failed for recipient {$details['recipient_id']}: " . $e->getMessage());
+                }
+            }
+        }
+        
+        respond(true, ['message' => 'Request accepted successfully']);
+        break;
+        
+    case 'donor_decline':
+        // Donor declining a request
+        if (!$profileManager->hasRole('donor')) {
+            respond(false, ['error' => 'Donor role required'], 403);
+        }
+        
+        $requestId = (int)($_POST['request_id'] ?? 0);
+        
+        if ($requestId <= 0) {
+            respond(false, ['error' => 'Invalid request ID']);
+        }
+        
+        // Update notification status
+        $notifStmt = $conn->prepare("UPDATE lifeline_notifications SET status = 'declined', responded_at = NOW() WHERE request_id = ? AND donor_id = ?");
+        $notifStmt->bind_param("is", $requestId, $userId);
+        $notifStmt->execute();
+        $notifStmt->close();
+        
+        // Create donor response record
+        $responseStmt = $conn->prepare("INSERT INTO lifeline_donor_responses (request_id, donor_id, response, message) VALUES (?, ?, 'decline', ?) ON DUPLICATE KEY UPDATE response = 'decline', message = ?");
+        $message = trim($_POST['message'] ?? '');
+        $responseStmt->bind_param("isss", $requestId, $userId, $message, $message);
+        $responseStmt->execute();
+        $responseStmt->close();
+        
+        respond(true, ['message' => 'Request declined']);
+        break;
+        
+    default:
+        respond(false, ['error' => 'Invalid action'], 400);
+        break;
+}

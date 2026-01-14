@@ -641,9 +641,9 @@ switch ($action) {
         break;
 
     case 'get_notifications':
-        // Fetch emergency notifications for current user
+        // Fetch emergency and lifeline notifications for current user
         $notifications = [];
-        $notifStmt = $conn->prepare("\n            SELECT ln.*\n            FROM emergency_notifications ln\n            WHERE ln.user_id = ?\n              AND ln.channel = 'in_app'\n              AND ln.template_key IN ('emergency_new_request', 'emergency_donor_approved')\n            ORDER BY ln.created_at DESC\n            LIMIT 10\n        ");
+        $notifStmt = $conn->prepare("\n            SELECT ln.*\n            FROM emergency_notifications ln\n            WHERE ln.user_id = ?\n              AND ln.channel = 'in_app'\n              AND ln.template_key IN ('emergency_new_request', 'emergency_donor_approved', 'lifeline_new_request', 'lifeline_donor_approved')\n            ORDER BY ln.created_at DESC\n            LIMIT 10\n        ");
         $notifStmt->bind_param("s", $userId);
         $notifStmt->execute();
         $notifResult = $notifStmt->get_result();
@@ -652,18 +652,33 @@ switch ($action) {
             $payload = json_decode($row['payload'] ?? '{}', true) ?: [];
             $requestId = $payload['request_id'] ?? null;
             $donorId = $payload['donor_id'] ?? null;
+            $isLifeline = ($payload['type'] ?? '') === 'lifeline' || in_array($row['template_key'], ['lifeline_new_request', 'lifeline_donor_approved']);
             
             // Fetch request details if available
-                if ($requestId) {
-                $reqStmt = $conn->prepare("SELECT lr.id, lr.preferred_date, lr.preferred_time, lr.location, lr.blood_type, lr.city\n                                           FROM emergency_requests lr\n                                           WHERE lr.id = ? LIMIT 1");
-                $reqStmt->bind_param("i", $requestId);
-                $reqStmt->execute();
-                $reqResult = $reqStmt->get_result();
-                if ($reqResult && $reqResult->num_rows > 0) {
-                    $reqData = $reqResult->fetch_assoc();
-                    $row = array_merge($row, $reqData);
+            if ($requestId) {
+                if ($isLifeline) {
+                    // Fetch LifeLine request details
+                    $reqStmt = $conn->prepare("SELECT lr.id, lr.blood_type, lr.city, lr.urgency, lp.full_name AS recipient_name\n                                           FROM lifeline_requests lr\n                                           LEFT JOIN lifeline_profiles lp ON lp.recipient_id = lr.recipient_id\n                                           WHERE lr.id = ? LIMIT 1");
+                    $reqStmt->bind_param("i", $requestId);
+                    $reqStmt->execute();
+                    $reqResult = $reqStmt->get_result();
+                    if ($reqResult && $reqResult->num_rows > 0) {
+                        $reqData = $reqResult->fetch_assoc();
+                        $row = array_merge($row, $reqData);
+                    }
+                    $reqStmt->close();
+                } else {
+                    // Fetch emergency request details
+                    $reqStmt = $conn->prepare("SELECT lr.id, lr.preferred_date, lr.preferred_time, lr.location, lr.blood_type, lr.city\n                                           FROM emergency_requests lr\n                                           WHERE lr.id = ? LIMIT 1");
+                    $reqStmt->bind_param("i", $requestId);
+                    $reqStmt->execute();
+                    $reqResult = $reqStmt->get_result();
+                    if ($reqResult && $reqResult->num_rows > 0) {
+                        $reqData = $reqResult->fetch_assoc();
+                        $row = array_merge($row, $reqData);
+                    }
+                    $reqStmt->close();
                 }
-                $reqStmt->close();
             }
             
             // Fetch donor details if available (for recipient notifications)
@@ -687,7 +702,7 @@ switch ($action) {
         
         // Count unread notifications
         $unreadCount = 0;
-        $unreadStmt = $conn->prepare("SELECT COUNT(*) as cnt FROM emergency_notifications WHERE user_id = ? AND channel = 'in_app' AND status = 'queued' AND template_key IN ('emergency_new_request', 'emergency_donor_approved')");
+        $unreadStmt = $conn->prepare("SELECT COUNT(*) as cnt FROM emergency_notifications WHERE user_id = ? AND channel = 'in_app' AND status = 'queued' AND template_key IN ('emergency_new_request', 'emergency_donor_approved', 'lifeline_new_request', 'lifeline_donor_approved')");
         $unreadStmt->bind_param("s", $userId);
         $unreadStmt->execute();
         $unreadResult = $unreadStmt->get_result();

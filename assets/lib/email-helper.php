@@ -4,6 +4,20 @@
  * Centralized email configuration and sending functions
  */
 
+// Ensure PHPMailer is loaded
+if (!class_exists('PHPMailer\PHPMailer\PHPMailer')) {
+    // Try vendor autoload first
+    $vendorAutoload = __DIR__ . '/../../vendor/autoload.php';
+    if (file_exists($vendorAutoload)) {
+        require_once $vendorAutoload;
+    } else {
+        // Fallback to phpmailer directory
+        require_once __DIR__ . '/../../phpmailer/src/Exception.php';
+        require_once __DIR__ . '/../../phpmailer/src/PHPMailer.php';
+        require_once __DIR__ . '/../../phpmailer/src/SMTP.php';
+    }
+}
+
 use PHPMailer\PHPMailer\PHPMailer;
 use PHPMailer\PHPMailer\Exception;
 
@@ -14,6 +28,11 @@ use PHPMailer\PHPMailer\Exception;
  * @throws Exception if configuration fails
  */
 function getConfiguredMailer() {
+    // Ensure config is loaded for env() function
+    if (!function_exists('env')) {
+        require_once __DIR__ . '/../../config.php';
+    }
+    
     $mail = new PHPMailer(true);
     
     try {
@@ -27,14 +46,20 @@ function getConfiguredMailer() {
         $mail->Port       = env('SMTP_PORT', 465);
         $mail->CharSet    = 'UTF-8';
         
-        // SSL Options
+        // SSL Options - relaxed for better compatibility
         $mail->SMTPOptions = [
             'ssl' => [
-                'verify_peer'       => true,
-                'verify_peer_name'  => true,
-                'allow_self_signed' => false
+                'verify_peer'       => false,
+                'verify_peer_name'  => false,
+                'allow_self_signed' => true
             ]
         ];
+        
+        // Enable debug output (can be disabled in production)
+        // $mail->SMTPDebug = 2; // Uncomment for debugging
+        // $mail->Debugoutput = function($str, $level) {
+        //     error_log("SMTP Debug: $str");
+        // };
         
         // Set default sender
         $mail->setFrom(
@@ -45,6 +70,9 @@ function getConfiguredMailer() {
         return $mail;
         
     } catch (Exception $e) {
+        error_log("Failed to configure PHPMailer: " . $e->getMessage());
+        throw $e;
+    } catch (\Exception $e) {
         error_log("Failed to configure PHPMailer: " . $e->getMessage());
         throw $e;
     }
@@ -60,6 +88,11 @@ function getConfiguredMailer() {
  */
 function sendVerificationEmail($email, $first_name, $verification_code) {
     try {
+        // Ensure config is loaded for env() function
+        if (!function_exists('env')) {
+            require_once __DIR__ . '/../../config.php';
+        }
+        
         $mail = getConfiguredMailer();
         
         // Recipients
@@ -104,10 +137,22 @@ function sendVerificationEmail($email, $first_name, $verification_code) {
         
         // Send email
         $mail->send();
+        error_log("Verification email sent successfully to: $email");
         return true;
         
     } catch (Exception $e) {
-        error_log("Verification email failed for $email: " . $e->getMessage());
+        $errorMsg = "Verification email failed for $email: " . $e->getMessage();
+        if (isset($mail)) {
+            $errorMsg .= " | PHPMailer Error: " . $mail->ErrorInfo;
+        }
+        error_log($errorMsg);
+        return false;
+    } catch (\Exception $e) {
+        $errorMsg = "Verification email failed for $email: " . $e->getMessage();
+        if (isset($mail)) {
+            $errorMsg .= " | PHPMailer Error: " . $mail->ErrorInfo;
+        }
+        error_log($errorMsg);
         return false;
     }
 }

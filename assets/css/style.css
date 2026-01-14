@@ -1326,7 +1326,7 @@ header .header_top .header_top_content a {
   -webkit-box-pack: space-evenly;
   -ms-flex-pack: space-evenly;
   justify-content: space-evenly;
-  padding-left: 85px;
+  margin-right: 10px;
 }
 
 @media (max-width: 1612px) {
@@ -1418,6 +1418,80 @@ header .header_top .header_top_content a {
 .header_bottom .main_menu li>ul li a:hover {
   color: var(--primary-color);
   padding-left: 32px;
+}
+
+/* Bootstrap dropdown support for main menu */
+.header_bottom .main_menu li.dropdown {
+  position: relative;
+}
+
+.header_bottom .main_menu li.dropdown .dropdown-toggle {
+  position: relative;
+}
+
+.header_bottom .main_menu li.dropdown .dropdown-menu {
+  position: absolute !important;
+  left: 0 !important;
+  top: 100% !important;
+  transform: none !important;
+  margin-top: -35px !important;
+  z-index: 1000;
+  background: var(--white);
+  opacity: 0;
+  visibility: hidden;
+  display: block;
+  -webkit-transition: 0.4s;
+  -o-transition: 0.4s;
+  transition: 0.4s;
+  min-width: 200px;
+  padding: 0;
+  margin: 0;
+  border: 1px solid var(--border-color);
+  box-shadow: 0px 9px 52px 0px rgba(0, 0, 0, 0.07);
+}
+
+.header_bottom .main_menu li.dropdown .dropdown-menu.show {
+  opacity: 1;
+  visibility: visible;
+  z-index: 1000;
+  transform: none !important;
+  margin-top: -35px !important;
+  top: 100% !important;
+  left: 0 !important;
+}
+
+/* Override Bootstrap Popper.js positioning for main menu dropdowns */
+.header_bottom .main_menu li.dropdown .dropdown-menu[data-popper-placement],
+.header_bottom .main_menu li.dropdown .dropdown-menu[style*="transform"],
+.header_bottom .main_menu li.dropdown .dropdown-menu[style*="position"] {
+  transform: none !important;
+  margin-top: -35px !important;
+  top: 100% !important;
+  left: 0 !important;
+  position: absolute !important;
+}
+
+.header_bottom .main_menu li.dropdown .dropdown-menu .dropdown-item {
+  min-width: 200px;
+  padding: 10px 25px;
+  color: var(--secondary-color);
+  -webkit-transition: var(--transition_base);
+  -o-transition: var(--transition_base);
+  transition: var(--transition_base);
+  text-transform: capitalize;
+  text-decoration: none;
+  display: block;
+  border: none;
+}
+
+.header_bottom .main_menu li.dropdown .dropdown-menu .dropdown-item:hover {
+  color: var(--primary-color);
+  padding-left: 32px;
+  background-color: transparent;
+}
+
+.header_bottom .main_menu li.dropdown .dropdown-menu .dropdown-item + .dropdown-item {
+  border-top: 1px solid var(--border-color);
 }
 
 .header_bottom .header_search_menu {

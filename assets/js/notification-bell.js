@@ -131,6 +131,34 @@ function renderNotifications(notifications) {
                 actionUrl = 'emergency-recipient.php#request-' + requestId;
                 actionText = 'View Request';
             }
+        } else if (notif.template_key === 'lifeline_new_request') {
+            iconClass = 'fa-heartbeat text-danger';
+            title = 'New LifeLine Request';
+            message = `A new LifeLine request matches your profile`;
+            if (notif.blood_type) {
+                message += ` (Blood Type: ${escapeHtml(notif.blood_type)}`;
+                if (notif.city) {
+                    message += `, City: ${escapeHtml(notif.city)}`;
+                }
+                message += ')';
+            }
+            if (requestId) {
+                actionUrl = 'lifeline-donor-requests#request-' + requestId;
+                actionText = 'View Request';
+            }
+        } else if (notif.template_key === 'lifeline_donor_approved') {
+            iconClass = 'fa-check-circle text-success';
+            title = 'Donor Approved Your LifeLine Request';
+            if (notif.donor_first || notif.donor_last) {
+                const donorName = escapeHtml((notif.donor_first || '') + ' ' + (notif.donor_last || '')).trim();
+                message = `${donorName} has approved your LifeLine request.`;
+            } else {
+                message = 'A donor has approved your LifeLine request.';
+            }
+            if (requestId) {
+                actionUrl = 'lifeline-panel#request-' + requestId;
+                actionText = 'View Request';
+            }
         }
         
         const timeAgo = getTimeAgo(notif.created_at);

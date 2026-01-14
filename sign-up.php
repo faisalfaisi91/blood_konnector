@@ -1,10 +1,21 @@
 <?php
+// Load configuration first
+require_once 'config.php';
+
 // Load PHPMailer
 use PHPMailer\PHPMailer\PHPMailer;
 use PHPMailer\PHPMailer\Exception;
 
-require 'vendor/autoload.php';
-require_once 'config.php';
+// Try to load vendor autoload, fallback to phpmailer if needed
+if (file_exists(__DIR__ . '/vendor/autoload.php')) {
+    require __DIR__ . '/vendor/autoload.php';
+} else {
+    // Fallback: load PHPMailer directly
+    require_once __DIR__ . '/phpmailer/src/Exception.php';
+    require_once __DIR__ . '/phpmailer/src/PHPMailer.php';
+    require_once __DIR__ . '/phpmailer/src/SMTP.php';
+}
+
 require_once 'assets/lib/email-helper.php';
 session_start();
 include("assets/lib/openconn.php");
@@ -49,21 +60,32 @@ if (isset($_POST['btnSignUp'])) {
         
         if (mysqli_query($conn, $insert_query)) {
             // Send verification email
-            $email_sent = sendVerificationEmail($email, $first_name, $verification_code);
-            
-            if ($email_sent) {
-                $_SESSION['user_first_name'] = $first_name;
-                $_SESSION['user_last_name']  = $last_name;
-                $_SESSION['user_email']      = $email;
-                $_SESSION['user_id']         = $user_id;
+            try {
+                $email_sent = sendVerificationEmail($email, $first_name, $verification_code);
                 
-                $alert_message = "Sign-up successful! Please check your email to verify your account.";
-            } else {
+                if ($email_sent) {
+                    $_SESSION['user_first_name'] = $first_name;
+                    $_SESSION['user_last_name']  = $last_name;
+                    $_SESSION['user_email']      = $email;
+                    $_SESSION['user_id']         = $user_id;
+                    
+                    $alert_message = "Sign-up successful! Please check your email to verify your account.";
+                } else {
+                    // Log the error for debugging
+                    error_log("Email sending returned false for: $email");
+                    $alert_message = "Account created but verification email failed to send. Please contact support or check your spam folder.";
+                    // mysqli_query($conn, "DELETE FROM users WHERE email='$email'");
+                }
+            } catch (Exception $e) {
+                error_log("Exception during email send: " . $e->getMessage());
+                $alert_message = "Account created but verification email failed to send: " . $e->getMessage() . ". Please contact support.";
+            } catch (\Exception $e) {
+                error_log("Exception during email send: " . $e->getMessage());
                 $alert_message = "Account created but verification email failed to send. Please contact support.";
-                // mysqli_query($conn, "DELETE FROM users WHERE email='$email'");
             }
         } else {
-            $alert_message = "Error: Could not complete registration. Please try again.";
+            $alert_message = "Error: Could not complete registration. Please try again. " . mysqli_error($conn);
+            error_log("Database insert failed: " . mysqli_error($conn));
         }
     }
 }
