@@ -50,6 +50,19 @@ function getConfiguredMailer() {
             $mail->SMTPSecure = PHPMailer::ENCRYPTION_SMTPS;
             $mail->Port       = env('SMTP_PORT', 465);
             
+            // Enable SMTP debugging (set to 0 for production, 2 for detailed debugging)
+            // Temporarily enable debugging to diagnose email delivery issues
+            $smtpDebugLevel = env('SMTP_DEBUG', 2); // 0 = off, 1 = client messages, 2 = client and server messages
+            $mail->SMTPDebug = $smtpDebugLevel;
+            $mail->Debugoutput = function($str, $level) {
+                $debugLogFile = __DIR__ . '/../../smtp_debug.log';
+                $logMessage = date('Y-m-d H:i:s') . " [Level $level] $str\n";
+                // Try to write to file
+                @file_put_contents($debugLogFile, $logMessage, FILE_APPEND);
+                // Also log to PHP error log for immediate visibility
+                error_log("SMTP Debug [Level $level]: $str");
+            };
+            
             // SSL Options - relaxed for better compatibility
             $mail->SMTPOptions = [
                 'ssl' => [
@@ -140,12 +153,23 @@ function sendVerificationEmail($email, $first_name, $verification_code) {
         $mail->AltBody = "Hi " . $first_name . ",\n\nThank you for signing up at Blood Connector.\n\nPlease verify your email using the following link:\n" . $verification_link . "\n\nIf you didn't create this account, please ignore this message.\n\nRegards,\nThe Blood Connector Team";
         
         // Send email - CHECK THE RETURN VALUE!
-        if (!$mail->send()) {
-            // send() returned false - email failed to send
-            $errorMsg = "Verification email send() returned false for $email";
-            if (isset($mail)) {
+        $sendResult = $mail->send();
+        
+        // Even if send() returns true, check ErrorInfo to see if there were warnings
+        $hasErrors = !empty($mail->ErrorInfo);
+        
+        if (!$sendResult || $hasErrors) {
+            // send() returned false OR there are errors/warnings
+            $errorMsg = "Verification email failed for $email";
+            if (!$sendResult) {
+                $errorMsg .= " | send() returned false";
+            }
+            if ($hasErrors) {
                 $errorMsg .= " | PHPMailer Error: " . $mail->ErrorInfo;
-                $errorMsg .= " | Last Error: " . (error_get_last()['message'] ?? 'No last error');
+            }
+            $lastError = error_get_last();
+            if ($lastError) {
+                $errorMsg .= " | PHP Last Error: " . $lastError['message'];
             }
             error_log($errorMsg);
             // Log to a specific email error file for easier debugging
@@ -154,8 +178,9 @@ function sendVerificationEmail($email, $first_name, $verification_code) {
             return false;
         }
         
-        // Success - email was sent
-        error_log("Verification email sent successfully to: $email");
+        // Success - email was sent (but verify SMTP actually accepted it)
+        // Note: send() returning true doesn't guarantee delivery, just that SMTP accepted it
+        error_log("Verification email accepted by SMTP server for: $email");
         return true;
         
     } catch (Exception $e) {
@@ -231,22 +256,44 @@ function sendPasswordResetEmail($email, $first_name, $reset_token) {
         $mail->AltBody = "Dear " . $first_name . ",\n\nWe received a request to reset your password.\n\nClick or copy this link to reset it:\n" . $reset_link . "\n\nThis link will expire in 1 hour. If you didn't request a password reset, please ignore this email.\n\nBest regards,\nThe Blood Connector Team";
         
         // Send email - CHECK THE RETURN VALUE!
-        if (!$mail->send()) {
-            // send() returned false - email failed to send
-            $errorMsg = "Password reset email send() returned false for $email";
-            if (isset($mail)) {
+        $sendResult = $mail->send();
+        
+        // Even if send() returns true, check ErrorInfo to see if there were warnings
+        $hasErrors = !empty($mail->ErrorInfo);
+        
+        // Always log the result for debugging
+        $logFile = __DIR__ . '/../../email_errors.log';
+        $logEntry = date('Y-m-d H:i:s') . " - Password reset email attempt for: $email | send() result: " . ($sendResult ? 'true' : 'false') . " | ErrorInfo: " . ($mail->ErrorInfo ?: 'none') . "\n";
+        file_put_contents($logFile, $logEntry, FILE_APPEND);
+        error_log("Email send attempt: $email - Result: " . ($sendResult ? 'SUCCESS' : 'FAILED') . " - ErrorInfo: " . ($mail->ErrorInfo ?: 'none'));
+        
+        if (!$sendResult || $hasErrors) {
+            // send() returned false OR there are errors/warnings
+            $errorMsg = "Password reset email failed for $email";
+            if (!$sendResult) {
+                $errorMsg .= " | send() returned false";
+            }
+            if ($hasErrors) {
                 $errorMsg .= " | PHPMailer Error: " . $mail->ErrorInfo;
-                $errorMsg .= " | Last Error: " . error_get_last()['message'] ?? 'No last error';
+            }
+            $lastError = error_get_last();
+            if ($lastError) {
+                $errorMsg .= " | PHP Last Error: " . $lastError['message'];
             }
             error_log($errorMsg);
-            // Log to a specific email error file for easier debugging
-            $emailLogFile = __DIR__ . '/../../email_errors.log';
-            file_put_contents($emailLogFile, date('Y-m-d H:i:s') . " - " . $errorMsg . "\n", FILE_APPEND);
+            file_put_contents($logFile, date('Y-m-d H:i:s') . " - ERROR: " . $errorMsg . "\n", FILE_APPEND);
             return false;
         }
         
-        // Success - email was sent
-        error_log("Password reset email sent successfully to: $email");
+        // Success - email was sent (but verify SMTP actually accepted it)
+        // Note: send() returning true doesn't guarantee delivery, just that SMTP accepted it
+        // IMPORTANT: If email is not received, check:
+        // 1. SMTP server logs (if accessible)
+        // 2. Recipient's spam folder
+        // 3. Email provider blocking
+        // 4. SMTP server may have accepted but filtered the email
+        error_log("Password reset email accepted by SMTP server for: $email (Note: This doesn't guarantee delivery - check spam folder)");
+        file_put_contents($logFile, date('Y-m-d H:i:s') . " - SUCCESS: Email accepted by SMTP for: $email\n", FILE_APPEND);
         return true;
         
     } catch (Exception $e) {
