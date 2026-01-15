@@ -50,6 +50,13 @@ function getConfiguredMailer() {
             $mail->SMTPSecure = PHPMailer::ENCRYPTION_SMTPS;
             $mail->Port       = env('SMTP_PORT', 465);
             
+            // Set HELO/EHLO name for better email deliverability
+            // This identifies your server when connecting to SMTP
+            // Use staging domain for staging server, or main domain for production
+            $heloName = env('SMTP_HELO', 'staging.bloodkonnector.com');
+            $mail->Helo = $heloName;
+            $mail->Hostname = $heloName; // Also set Hostname for Message-ID header
+            
             // Enable SMTP debugging (set to 0 for production, 2 for detailed debugging)
             // Temporarily enable debugging to diagnose email delivery issues
             $smtpDebugLevel = env('SMTP_DEBUG', 2); // 0 = off, 1 = client messages, 2 = client and server messages
