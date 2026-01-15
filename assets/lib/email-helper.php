@@ -43,10 +43,10 @@ function getConfiguredMailer() {
         if ($useSMTP === 'true' || $useSMTP === true) {
             // Use SMTP (more reliable, especially on Windows/XAMPP)
             $mail->isSMTP();
-            $mail->Host       = env('SMTP_HOST', 's26.hosterpk.com');
+            $mail->Host       = env('SMTP_HOST', 'mail.bloodkonnector.com');
             $mail->SMTPAuth   = true;
             $mail->Username   = env('SMTP_USERNAME', 'info@bloodkonnector.com');
-            $mail->Password   = env('SMTP_PASSWORD', 'Nokia#001Nokia#001');
+            $mail->Password   = env('SMTP_PASSWORD', 'Nokia#001');
             $mail->SMTPSecure = PHPMailer::ENCRYPTION_SMTPS;
             $mail->Port       = env('SMTP_PORT', 465);
             
