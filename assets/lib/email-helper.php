@@ -22,7 +22,7 @@ use PHPMailer\PHPMailer\PHPMailer;
 use PHPMailer\PHPMailer\Exception;
 
 /**
- * Get a configured PHPMailer instance with SMTP settings from environment
+ * Get a configured PHPMailer instance using PHP's default mail() function
  * 
  * @return PHPMailer Configured PHPMailer instance
  * @throws Exception if configuration fails
@@ -36,30 +36,9 @@ function getConfiguredMailer() {
     $mail = new PHPMailer(true);
     
     try {
-        // SMTP Configuration from environment variables
-        $mail->isSMTP();
-        $mail->Host       = env('SMTP_HOST', 's26.hosterpk.com');
-        $mail->SMTPAuth   = true;
-        $mail->Username   = env('SMTP_USERNAME', 'info@bloodkonnector.com');
-        $mail->Password   = env('SMTP_PASSWORD', 'Nokia#001Nokia#001');
-        $mail->SMTPSecure = PHPMailer::ENCRYPTION_SMTPS;
-        $mail->Port       = env('SMTP_PORT', 465);
-        $mail->CharSet    = 'UTF-8';
-        
-        // SSL Options - relaxed for better compatibility
-        $mail->SMTPOptions = [
-            'ssl' => [
-                'verify_peer'       => false,
-                'verify_peer_name'  => false,
-                'allow_self_signed' => true
-            ]
-        ];
-        
-        // Enable debug output (can be disabled in production)
-        // $mail->SMTPDebug = 2; // Uncomment for debugging
-        // $mail->Debugoutput = function($str, $level) {
-        //     error_log("SMTP Debug: $str");
-        // };
+        // Use PHP's default mail() function instead of SMTP
+        $mail->isMail();
+        $mail->CharSet = 'UTF-8';
         
         // Set default sender
         $mail->setFrom(
@@ -135,8 +114,18 @@ function sendVerificationEmail($email, $first_name, $verification_code) {
         // Plain text version
         $mail->AltBody = "Hi " . $first_name . ",\n\nThank you for signing up at Blood Connector.\n\nPlease verify your email using the following link:\n" . $verification_link . "\n\nIf you didn't create this account, please ignore this message.\n\nRegards,\nThe Blood Connector Team";
         
-        // Send email
-        $mail->send();
+        // Send email - CHECK THE RETURN VALUE!
+        if (!$mail->send()) {
+            // send() returned false - email failed to send
+            $errorMsg = "Verification email send() returned false for $email";
+            if (isset($mail)) {
+                $errorMsg .= " | PHPMailer Error: " . $mail->ErrorInfo;
+            }
+            error_log($errorMsg);
+            return false;
+        }
+        
+        // Success - email was sent
         error_log("Verification email sent successfully to: $email");
         return true;
         
@@ -167,6 +156,11 @@ function sendVerificationEmail($email, $first_name, $verification_code) {
  */
 function sendPasswordResetEmail($email, $first_name, $reset_token) {
     try {
+        // Ensure config is loaded for env() function
+        if (!function_exists('env')) {
+            require_once __DIR__ . '/../../config.php';
+        }
+        
         $mail = getConfiguredMailer();
         
         // Recipients
@@ -207,12 +201,34 @@ function sendPasswordResetEmail($email, $first_name, $reset_token) {
         // Plain text version
         $mail->AltBody = "Dear " . $first_name . ",\n\nWe received a request to reset your password.\n\nClick or copy this link to reset it:\n" . $reset_link . "\n\nThis link will expire in 1 hour. If you didn't request a password reset, please ignore this email.\n\nBest regards,\nThe Blood Connector Team";
         
-        // Send email
-        $mail->send();
+        // Send email - CHECK THE RETURN VALUE!
+        if (!$mail->send()) {
+            // send() returned false - email failed to send
+            $errorMsg = "Password reset email send() returned false for $email";
+            if (isset($mail)) {
+                $errorMsg .= " | PHPMailer Error: " . $mail->ErrorInfo;
+            }
+            error_log($errorMsg);
+            return false;
+        }
+        
+        // Success - email was sent
+        error_log("Password reset email sent successfully to: $email");
         return true;
         
     } catch (Exception $e) {
-        error_log("Password reset email failed for $email: " . $e->getMessage());
+        $errorMsg = "Password reset email failed for $email: " . $e->getMessage();
+        if (isset($mail)) {
+            $errorMsg .= " | PHPMailer Error: " . $mail->ErrorInfo;
+        }
+        error_log($errorMsg);
+        return false;
+    } catch (\Exception $e) {
+        $errorMsg = "Password reset email failed for $email: " . $e->getMessage();
+        if (isset($mail)) {
+            $errorMsg .= " | PHPMailer Error: " . $mail->ErrorInfo;
+        }
+        error_log($errorMsg);
         return false;
     }
 }

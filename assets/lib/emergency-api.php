@@ -84,8 +84,9 @@ function emergencyAutoAssignDonor($conn, $recipientId, $bloodTypeOverride = null
 /**
  * Find multiple matching donors and notify them about an emergency request.
  * Returns array of donor IDs that were notified.
+ * @param int|null $donorLimit Maximum number of donors to notify (null for unlimited)
  */
-function emergencyNotifyMatchingDonors($conn, $requestId, $recipientId, $bloodTypeOverride = null, $city = '', $scheduledAt = '', $excludeDonorId = null) {
+function emergencyNotifyMatchingDonors($conn, $requestId, $recipientId, $bloodTypeOverride = null, $city = '', $scheduledAt = '', $excludeDonorId = null, $donorLimit = 10) {
     // Use the blood_type and city from the request (form), not from recipient profile
     $blood = $bloodTypeOverride ?: '';
     
@@ -132,10 +133,22 @@ function emergencyNotifyMatchingDonors($conn, $requestId, $recipientId, $bloodTy
         $cityStmt->close();
     }
     
-    // Find matching donors (up to 10 to avoid spam)
+    // Find matching donors with configurable limit
     // Priority: same city first, then same blood type
     // Match city case-insensitively and handle partial matches
     // Join with users table to ensure user_id exists and is valid
+    
+    // Build LIMIT clause (cannot use placeholder in prepared statement for LIMIT)
+    $limitClause = '';
+    if ($donorLimit !== null && $donorLimit !== 'unlimited') {
+        $limitValue = (int)$donorLimit;
+        // Validate limit value is reasonable (max 10000 to prevent abuse)
+        if ($limitValue > 0 && $limitValue <= 10000) {
+            $limitClause = " LIMIT " . $limitValue;
+        }
+    }
+    // If null or 'unlimited', no LIMIT clause (gets all matching donors)
+    
     $query = "
         SELECT d.user_id
         FROM donors d
@@ -147,7 +160,7 @@ function emergencyNotifyMatchingDonors($conn, $requestId, $recipientId, $bloodTy
             CASE WHEN ? != '' AND (LOWER(d.location) LIKE LOWER(CONCAT('%', ?, '%')) OR LOWER(?) LIKE LOWER(CONCAT('%', d.location, '%'))) THEN 1 ELSE 2 END,
             (CASE WHEN d.last_donation_date IS NULL THEN 0 ELSE 1 END),
             d.last_donation_date ASC
-        LIMIT 10
+        " . $limitClause . "
     ";
     $stmt = $conn->prepare($query);
     $exclude = $excludeDonorId ?: '';
@@ -348,7 +361,15 @@ switch ($action) {
         // Use the blood_type from the request (form), not from recipient profile
         $notifiedCount = 0;
         if (!$donorId || $donorId === '') {
-            $notifiedDonors = emergencyNotifyMatchingDonors($conn, $requestId, $userId, $bloodTypeOverride, $city, $scheduledAt, $donorId);
+            // Get donor limit from form (default to 10 if not provided)
+            $donorLimit = trim($_POST['donor_limit'] ?? '10');
+            if ($donorLimit === 'unlimited') {
+                $donorLimit = null; // null means unlimited
+            } else {
+                $donorLimit = (int)$donorLimit; // Convert to integer
+            }
+            
+            $notifiedDonors = emergencyNotifyMatchingDonors($conn, $requestId, $userId, $bloodTypeOverride, $city, $scheduledAt, $donorId, $donorLimit);
             $notifiedCount = count($notifiedDonors);
         }
 

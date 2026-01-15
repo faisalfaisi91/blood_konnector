@@ -302,6 +302,17 @@ $stmt->close();
                         </select>
                     </div>
                     <div class="mb-3">
+                        <label class="form-label">Number of Donors to Notify</label>
+                        <select name="donor_limit" class="form-select" required>
+                            <option value="20">20 Donors</option>
+                            <option value="50" selected>50 Donors</option>
+                            <option value="75">75 Donors</option>
+                            <option value="100">100 Donors</option>
+                            <option value="unlimited">Unlimited (All Matching Donors)</option>
+                        </select>
+                        <small class="text-muted">Select how many matching donors should receive this request</small>
+                    </div>
+                    <div class="mb-3">
                         <label class="form-label">Link a donor (optional)</label>
                         <input type="text" name="donor_id" class="form-control" placeholder="Donor user ID if agreed in chat">
                     </div>
