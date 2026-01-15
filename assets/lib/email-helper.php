@@ -33,11 +33,36 @@ function getConfiguredMailer() {
         require_once __DIR__ . '/../../config.php';
     }
     
+    // Check if we should use SMTP or mail() function
+    // On Windows/XAMPP, mail() often doesn't work, so we'll use SMTP if configured
+    $useSMTP = env('USE_SMTP', 'true'); // Default to SMTP for better reliability
+    
     $mail = new PHPMailer(true);
     
     try {
-        // Use PHP's default mail() function instead of SMTP
-        $mail->isMail();
+        if ($useSMTP === 'true' || $useSMTP === true) {
+            // Use SMTP (more reliable, especially on Windows/XAMPP)
+            $mail->isSMTP();
+            $mail->Host       = env('SMTP_HOST', 's26.hosterpk.com');
+            $mail->SMTPAuth   = true;
+            $mail->Username   = env('SMTP_USERNAME', 'info@bloodkonnector.com');
+            $mail->Password   = env('SMTP_PASSWORD', 'Nokia#001Nokia#001');
+            $mail->SMTPSecure = PHPMailer::ENCRYPTION_SMTPS;
+            $mail->Port       = env('SMTP_PORT', 465);
+            
+            // SSL Options - relaxed for better compatibility
+            $mail->SMTPOptions = [
+                'ssl' => [
+                    'verify_peer'       => false,
+                    'verify_peer_name'  => false,
+                    'allow_self_signed' => true
+                ]
+            ];
+        } else {
+            // Use PHP's default mail() function
+            $mail->isMail();
+        }
+        
         $mail->CharSet = 'UTF-8';
         
         // Set default sender
@@ -120,8 +145,12 @@ function sendVerificationEmail($email, $first_name, $verification_code) {
             $errorMsg = "Verification email send() returned false for $email";
             if (isset($mail)) {
                 $errorMsg .= " | PHPMailer Error: " . $mail->ErrorInfo;
+                $errorMsg .= " | Last Error: " . (error_get_last()['message'] ?? 'No last error');
             }
             error_log($errorMsg);
+            // Log to a specific email error file for easier debugging
+            $emailLogFile = __DIR__ . '/../../email_errors.log';
+            file_put_contents($emailLogFile, date('Y-m-d H:i:s') . " - " . $errorMsg . "\n", FILE_APPEND);
             return false;
         }
         
@@ -207,8 +236,12 @@ function sendPasswordResetEmail($email, $first_name, $reset_token) {
             $errorMsg = "Password reset email send() returned false for $email";
             if (isset($mail)) {
                 $errorMsg .= " | PHPMailer Error: " . $mail->ErrorInfo;
+                $errorMsg .= " | Last Error: " . error_get_last()['message'] ?? 'No last error';
             }
             error_log($errorMsg);
+            // Log to a specific email error file for easier debugging
+            $emailLogFile = __DIR__ . '/../../email_errors.log';
+            file_put_contents($emailLogFile, date('Y-m-d H:i:s') . " - " . $errorMsg . "\n", FILE_APPEND);
             return false;
         }
         
