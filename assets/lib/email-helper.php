@@ -4,37 +4,86 @@
  * Centralized email configuration and sending functions
  */
 
+// Ensure PHPMailer is loaded
+if (!class_exists('PHPMailer\PHPMailer\PHPMailer')) {
+    // Try vendor autoload first
+    $vendorAutoload = __DIR__ . '/../../vendor/autoload.php';
+    if (file_exists($vendorAutoload)) {
+        require_once $vendorAutoload;
+    } else {
+        // Fallback to phpmailer directory
+        require_once __DIR__ . '/../../phpmailer/src/Exception.php';
+        require_once __DIR__ . '/../../phpmailer/src/PHPMailer.php';
+        require_once __DIR__ . '/../../phpmailer/src/SMTP.php';
+    }
+}
+
 use PHPMailer\PHPMailer\PHPMailer;
 use PHPMailer\PHPMailer\Exception;
 
 /**
- * Get a configured PHPMailer instance with SMTP settings from environment
+ * Get a configured PHPMailer instance using PHP's default mail() function
  * 
  * @return PHPMailer Configured PHPMailer instance
  * @throws Exception if configuration fails
  */
 function getConfiguredMailer() {
+    // Ensure config is loaded for env() function
+    if (!function_exists('env')) {
+        require_once __DIR__ . '/../../config.php';
+    }
+    
+    // Check if we should use SMTP or mail() function
+    // On Windows/XAMPP, mail() often doesn't work, so we'll use SMTP if configured
+    $useSMTP = env('USE_SMTP', 'true'); // Default to SMTP for better reliability
+    
     $mail = new PHPMailer(true);
     
     try {
-        // SMTP Configuration from environment variables
-        $mail->isSMTP();
-        $mail->Host       = env('SMTP_HOST', 's26.hosterpk.com');
-        $mail->SMTPAuth   = true;
-        $mail->Username   = env('SMTP_USERNAME', 'info@bloodkonnector.com');
-        $mail->Password   = env('SMTP_PASSWORD', 'Nokia#001Nokia#001');
-        $mail->SMTPSecure = PHPMailer::ENCRYPTION_SMTPS;
-        $mail->Port       = env('SMTP_PORT', 465);
-        $mail->CharSet    = 'UTF-8';
+        if ($useSMTP === 'true' || $useSMTP === true) {
+            // Use SMTP (more reliable, especially on Windows/XAMPP)
+            $mail->isSMTP();
+            $mail->Host       = env('SMTP_HOST', 'mail.bloodkonnector.com');
+            $mail->SMTPAuth   = true;
+            $mail->Username   = env('SMTP_USERNAME', 'info@bloodkonnector.com');
+            $mail->Password   = env('SMTP_PASSWORD', 'Nokia#001');
+            $mail->SMTPSecure = PHPMailer::ENCRYPTION_SMTPS;
+            $mail->Port       = env('SMTP_PORT', 465);
+            
+            // Set HELO/EHLO name for better email deliverability
+            // This identifies your server when connecting to SMTP
+            // Use staging domain for staging server, or main domain for production
+            $heloName = env('SMTP_HELO', 'staging.bloodkonnector.com');
+            $mail->Helo = $heloName;
+            $mail->Hostname = $heloName; // Also set Hostname for Message-ID header
+            
+            // Enable SMTP debugging (set to 0 for production, 2 for detailed debugging)
+            // Temporarily enable debugging to diagnose email delivery issues
+            $smtpDebugLevel = env('SMTP_DEBUG', 2); // 0 = off, 1 = client messages, 2 = client and server messages
+            $mail->SMTPDebug = $smtpDebugLevel;
+            $mail->Debugoutput = function($str, $level) {
+                $debugLogFile = __DIR__ . '/../../smtp_debug.log';
+                $logMessage = date('Y-m-d H:i:s') . " [Level $level] $str\n";
+                // Try to write to file
+                @file_put_contents($debugLogFile, $logMessage, FILE_APPEND);
+                // Also log to PHP error log for immediate visibility
+                error_log("SMTP Debug [Level $level]: $str");
+            };
+            
+            // SSL Options - relaxed for better compatibility
+            $mail->SMTPOptions = [
+                'ssl' => [
+                    'verify_peer'       => false,
+                    'verify_peer_name'  => false,
+                    'allow_self_signed' => true
+                ]
+            ];
+        } else {
+            // Use PHP's default mail() function
+            $mail->isMail();
+        }
         
-        // SSL Options
-        $mail->SMTPOptions = [
-            'ssl' => [
-                'verify_peer'       => true,
-                'verify_peer_name'  => true,
-                'allow_self_signed' => false
-            ]
-        ];
+        $mail->CharSet = 'UTF-8';
         
         // Set default sender
         $mail->setFrom(
@@ -45,6 +94,9 @@ function getConfiguredMailer() {
         return $mail;
         
     } catch (Exception $e) {
+        error_log("Failed to configure PHPMailer: " . $e->getMessage());
+        throw $e;
+    } catch (\Exception $e) {
         error_log("Failed to configure PHPMailer: " . $e->getMessage());
         throw $e;
     }
@@ -60,6 +112,11 @@ function getConfiguredMailer() {
  */
 function sendVerificationEmail($email, $first_name, $verification_code) {
     try {
+        // Ensure config is loaded for env() function
+        if (!function_exists('env')) {
+            require_once __DIR__ . '/../../config.php';
+        }
+        
         $mail = getConfiguredMailer();
         
         // Recipients
@@ -102,12 +159,50 @@ function sendVerificationEmail($email, $first_name, $verification_code) {
         // Plain text version
         $mail->AltBody = "Hi " . $first_name . ",\n\nThank you for signing up at Blood Connector.\n\nPlease verify your email using the following link:\n" . $verification_link . "\n\nIf you didn't create this account, please ignore this message.\n\nRegards,\nThe Blood Connector Team";
         
-        // Send email
-        $mail->send();
+        // Send email - CHECK THE RETURN VALUE!
+        $sendResult = $mail->send();
+        
+        // Even if send() returns true, check ErrorInfo to see if there were warnings
+        $hasErrors = !empty($mail->ErrorInfo);
+        
+        if (!$sendResult || $hasErrors) {
+            // send() returned false OR there are errors/warnings
+            $errorMsg = "Verification email failed for $email";
+            if (!$sendResult) {
+                $errorMsg .= " | send() returned false";
+            }
+            if ($hasErrors) {
+                $errorMsg .= " | PHPMailer Error: " . $mail->ErrorInfo;
+            }
+            $lastError = error_get_last();
+            if ($lastError) {
+                $errorMsg .= " | PHP Last Error: " . $lastError['message'];
+            }
+            error_log($errorMsg);
+            // Log to a specific email error file for easier debugging
+            $emailLogFile = __DIR__ . '/../../email_errors.log';
+            file_put_contents($emailLogFile, date('Y-m-d H:i:s') . " - " . $errorMsg . "\n", FILE_APPEND);
+            return false;
+        }
+        
+        // Success - email was sent (but verify SMTP actually accepted it)
+        // Note: send() returning true doesn't guarantee delivery, just that SMTP accepted it
+        error_log("Verification email accepted by SMTP server for: $email");
         return true;
         
     } catch (Exception $e) {
-        error_log("Verification email failed for $email: " . $e->getMessage());
+        $errorMsg = "Verification email failed for $email: " . $e->getMessage();
+        if (isset($mail)) {
+            $errorMsg .= " | PHPMailer Error: " . $mail->ErrorInfo;
+        }
+        error_log($errorMsg);
+        return false;
+    } catch (\Exception $e) {
+        $errorMsg = "Verification email failed for $email: " . $e->getMessage();
+        if (isset($mail)) {
+            $errorMsg .= " | PHPMailer Error: " . $mail->ErrorInfo;
+        }
+        error_log($errorMsg);
         return false;
     }
 }
@@ -122,6 +217,11 @@ function sendVerificationEmail($email, $first_name, $verification_code) {
  */
 function sendPasswordResetEmail($email, $first_name, $reset_token) {
     try {
+        // Ensure config is loaded for env() function
+        if (!function_exists('env')) {
+            require_once __DIR__ . '/../../config.php';
+        }
+        
         $mail = getConfiguredMailer();
         
         // Recipients
@@ -162,12 +262,60 @@ function sendPasswordResetEmail($email, $first_name, $reset_token) {
         // Plain text version
         $mail->AltBody = "Dear " . $first_name . ",\n\nWe received a request to reset your password.\n\nClick or copy this link to reset it:\n" . $reset_link . "\n\nThis link will expire in 1 hour. If you didn't request a password reset, please ignore this email.\n\nBest regards,\nThe Blood Connector Team";
         
-        // Send email
-        $mail->send();
+        // Send email - CHECK THE RETURN VALUE!
+        $sendResult = $mail->send();
+        
+        // Even if send() returns true, check ErrorInfo to see if there were warnings
+        $hasErrors = !empty($mail->ErrorInfo);
+        
+        // Always log the result for debugging
+        $logFile = __DIR__ . '/../../email_errors.log';
+        $logEntry = date('Y-m-d H:i:s') . " - Password reset email attempt for: $email | send() result: " . ($sendResult ? 'true' : 'false') . " | ErrorInfo: " . ($mail->ErrorInfo ?: 'none') . "\n";
+        file_put_contents($logFile, $logEntry, FILE_APPEND);
+        error_log("Email send attempt: $email - Result: " . ($sendResult ? 'SUCCESS' : 'FAILED') . " - ErrorInfo: " . ($mail->ErrorInfo ?: 'none'));
+        
+        if (!$sendResult || $hasErrors) {
+            // send() returned false OR there are errors/warnings
+            $errorMsg = "Password reset email failed for $email";
+            if (!$sendResult) {
+                $errorMsg .= " | send() returned false";
+            }
+            if ($hasErrors) {
+                $errorMsg .= " | PHPMailer Error: " . $mail->ErrorInfo;
+            }
+            $lastError = error_get_last();
+            if ($lastError) {
+                $errorMsg .= " | PHP Last Error: " . $lastError['message'];
+            }
+            error_log($errorMsg);
+            file_put_contents($logFile, date('Y-m-d H:i:s') . " - ERROR: " . $errorMsg . "\n", FILE_APPEND);
+            return false;
+        }
+        
+        // Success - email was sent (but verify SMTP actually accepted it)
+        // Note: send() returning true doesn't guarantee delivery, just that SMTP accepted it
+        // IMPORTANT: If email is not received, check:
+        // 1. SMTP server logs (if accessible)
+        // 2. Recipient's spam folder
+        // 3. Email provider blocking
+        // 4. SMTP server may have accepted but filtered the email
+        error_log("Password reset email accepted by SMTP server for: $email (Note: This doesn't guarantee delivery - check spam folder)");
+        file_put_contents($logFile, date('Y-m-d H:i:s') . " - SUCCESS: Email accepted by SMTP for: $email\n", FILE_APPEND);
         return true;
         
     } catch (Exception $e) {
-        error_log("Password reset email failed for $email: " . $e->getMessage());
+        $errorMsg = "Password reset email failed for $email: " . $e->getMessage();
+        if (isset($mail)) {
+            $errorMsg .= " | PHPMailer Error: " . $mail->ErrorInfo;
+        }
+        error_log($errorMsg);
+        return false;
+    } catch (\Exception $e) {
+        $errorMsg = "Password reset email failed for $email: " . $e->getMessage();
+        if (isset($mail)) {
+            $errorMsg .= " | PHPMailer Error: " . $mail->ErrorInfo;
+        }
+        error_log($errorMsg);
         return false;
     }
 }

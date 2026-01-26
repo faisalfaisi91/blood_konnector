@@ -123,11 +123,22 @@
                     </ul>
                     </li>
                   <?php endif;
+                  // LifeLine menu - dropdown for both recipients and donors
+                  if ($hasRecipient || $hasDonor): ?>
+                    <li class="position-relative dropdown">
+                      <a class="dropdown-toggle" href="#" id="lifelineMenu" role="button" data-bs-toggle="dropdown" aria-expanded="false" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click();}">LifeLine</a>
+                      <ul class="dropdown-menu" aria-labelledby="lifelineMenu">
+                        <?php if ($hasRecipient && ($currentProfile === 'recipient' || ($currentProfile === null && !$hasDonor))): ?>
+                          <li><a class="dropdown-item" href="lifeline-panel">LifeLine Panel</a></li>
+                        <?php endif; ?>
+                        <?php if ($hasDonor && ($currentProfile === 'donor' || ($currentProfile === null && !$hasRecipient))): ?>
+                          <li><a class="dropdown-item" href="lifeline-donor-requests">LifeLine Requests</a></li>
+                        <?php endif; ?>
+                      </ul>
+                    </li>
+                  <?php endif;
                 }
               ?>
-              <li class="position-relative">
-                <a href="contact">Contact</a>
-              </li>
             </ul>
           </div>
           <div class="col-xl-3 col-lg-3 d-none d-xxl-block d-xl-block">
@@ -291,6 +302,49 @@
     </div>
   </header>
 
+
+<!-- Fix dropdown positioning for main menu -->
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // Initialize dropdowns with static positioning (no Popper.js)
+    if (typeof bootstrap !== 'undefined' && bootstrap.Dropdown) {
+        const dropdownToggles = document.querySelectorAll('.main_menu .dropdown-toggle[data-bs-toggle="dropdown"]');
+        dropdownToggles.forEach(function(toggle) {
+            try {
+                const dropdown = new bootstrap.Dropdown(toggle, {
+                    popperConfig: null
+                });
+                
+                // Disable Popper.js positioning after initialization
+                toggle.addEventListener('shown.bs.dropdown', function() {
+                    const menu = toggle.nextElementSibling;
+                    if (menu && menu.classList.contains('dropdown-menu')) {
+                        // Position directly under the toggle with negative margin to reduce gap
+                        menu.style.transform = 'none';
+                        menu.style.marginTop = '-35px';
+                        menu.style.top = '100%';
+                        menu.style.left = '0';
+                        menu.style.position = 'absolute';
+                    }
+                });
+            } catch (e) {
+                console.error('Dropdown init error:', e);
+            }
+        });
+    }
+    
+    // Prevent hash from being added to URL
+    document.querySelectorAll('.main_menu .dropdown-toggle[href="#"]').forEach(function(toggle) {
+        toggle.addEventListener('click', function() {
+            setTimeout(function() {
+                if (window.location.hash === '#') {
+                    history.replaceState(null, null, window.location.pathname + window.location.search);
+                }
+            }, 10);
+        });
+    });
+});
+</script>
 
 <!--Start of Tawk.to Script-->
 <script type="text/javascript">

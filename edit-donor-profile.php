@@ -167,7 +167,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     WHERE user_id = ?";
                 $stmt = $conn->prepare($update_query);
                 $stmt->bind_param(
-                    "ssssisssssssssssssssssssssssss",
+                    "ssssissssssssssssssssssssssss",
                     $full_name, $first_name, $last_name, $father_name, $age, $gender, $email,
                     $contact_number, $whatsapp_number, $emergency_contacts, $cnic, $occupation,
                     $full_address, $location, $blood_type, $contact_method, $emergency_availability,

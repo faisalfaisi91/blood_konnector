@@ -41,16 +41,31 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
             } else {
                 $stmt->bind_param("sss", $reset_token, $expires_at, $user_id);
                 if ($stmt->execute()) {
+                    // Log the attempt
+                    error_log("Attempting to send password reset email to: $email (User: $first_name, ID: $user_id)");
+                    
                     // Send reset email
-                    $email_sent = sendPasswordResetEmail($email, $first_name, $reset_token);
-                    if ($email_sent) {
-                        $alert_message = "A password reset link has been sent to your email.";
-                        $alert_type = "success";
-                    } else {
-                        $alert_message = "Failed to send reset email. Please try again.";
+                    try {
+                        $email_sent = sendPasswordResetEmail($email, $first_name, $reset_token);
+                        if ($email_sent) {
+                            $alert_message = "A password reset link has been sent to your email.";
+                            $alert_type = "success";
+                            error_log("Password reset email function returned TRUE for: $email");
+                        } else {
+                            // Log the error for debugging
+                            error_log("Password reset email sending returned FALSE for: $email");
+                            $alert_message = "Failed to send reset email. Please try again or contact support.";
+                        }
+                    } catch (Exception $e) {
+                        error_log("Exception during password reset email send: " . $e->getMessage());
+                        $alert_message = "Failed to send reset email: " . $e->getMessage() . ". Please contact support.";
+                    } catch (\Exception $e) {
+                        error_log("Exception during password reset email send: " . $e->getMessage());
+                        $alert_message = "Failed to send reset email. Please contact support.";
                     }
                 } else {
                     $alert_message = "Error generating reset link. Please try again.";
+                    error_log("Database update failed for password reset: " . mysqli_error($conn));
                 }
             }
         } else {

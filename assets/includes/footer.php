@@ -136,11 +136,16 @@
 
         <ul class="accordion accordion-flush mobile_dropdown" id="accordionFlushExample">
           <li class="accordion-item">
-            <h2><a href="index">Home</a></h2>
+            <h2>
+              <a class="accordion-button collapsed" data-bs-toggle="collapse" href="#mobileCompany" aria-expanded="false" aria-controls="mobileCompany">Company</a>
+            </h2>
+            <div id="mobileCompany" class="accordion-collapse collapse">
+              <div class="accordion-body">
+                <a href="about">About Us</a><br />
+                <a href="contact">Contact</a><br />
+              </div>
+            </div>
           </li>
-          <!--<li class="accordion-item">-->
-          <!--  <h2><a href="about">About</a></h2>-->
-          <!--</li>-->
            <li class="accordion-item">
             <h2><a href="find-a-donor">Find A Donor</a></h2>
           </li>
@@ -207,6 +212,32 @@
                       endif;
                     endif;
                   endif; ?>
+                </div>
+              </div>
+            </li>
+          <?php endif; endif; ?>
+          <!-- LifeLine Panel mobile accordion (group recipient/donor links) -->
+          <?php if (isset($_SESSION['user_id'])):
+              if (!isset($profileManager)) {
+                  require_once('assets/lib/ProfileManager.php');
+                  $profileManager = new ProfileManager($conn);
+              }
+              $hasRecipient = $profileManager->hasRole('recipient');
+              $hasDonor = $profileManager->hasRole('donor');
+              $currentProfile = $profileManager->getCurrentProfile();
+              if ($hasRecipient || $hasDonor): ?>
+            <li class="accordion-item">
+              <h2>
+                <a class="accordion-button collapsed" data-bs-toggle="collapse" href="#mobileLifeLine" aria-expanded="false" aria-controls="mobileLifeLine">LifeLine</a>
+              </h2>
+              <div id="mobileLifeLine" class="accordion-collapse collapse">
+                <div class="accordion-body">
+                  <?php if ($hasRecipient && ($currentProfile === 'recipient' || ($currentProfile === null && !$hasDonor))): ?>
+                    <a href="lifeline-panel">LifeLine Panel</a><br />
+                  <?php endif; ?>
+                  <?php if ($hasDonor && ($currentProfile === 'donor' || ($currentProfile === null && !$hasRecipient))): ?>
+                    <a href="lifeline-donor-requests">LifeLine Requests</a><br />
+                  <?php endif; ?>
                 </div>
               </div>
             </li>
@@ -324,10 +355,6 @@
             </div>
           </li>
           <?php endif; ?>
-          
-          <li class="accordion-item">
-            <h2><a href="contact">Contact</a></h2>
-          </li>
         </ul>
       </div>
     </div>
