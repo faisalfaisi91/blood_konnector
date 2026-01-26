@@ -460,6 +460,7 @@ $recipients = $stmt->get_result();
             }
         }
     </style>
+    <?php include('assets/includes/link-js.php'); ?>
 </head>
 <body>
 <?php include('assets/includes/header.php'); ?>

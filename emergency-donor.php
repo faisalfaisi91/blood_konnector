@@ -161,6 +161,7 @@ $requests = array_merge($assignedRequests, $availableRequests);
         .status-expired { background:#f3f4f6; color:#374151; }
         .countdown { font-weight:600; color:#111827; }
     </style>
+    <?php include('assets/includes/link-js.php'); ?>
 </head>
 <body>
 <?php include('assets/includes/header.php'); ?>

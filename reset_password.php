@@ -192,6 +192,7 @@ if (empty($token)) {
             }
         }
     </style>
+    <?php include('assets/includes/link-js.php'); ?>
 </head>
 <body>
     <?php include('assets/includes/preloader.php'); ?>

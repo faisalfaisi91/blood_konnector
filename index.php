@@ -322,6 +322,7 @@ if (isset($_SESSION['user_id'])) {
             }
         }
     </style>
+    <?php include('assets/includes/link-js.php'); ?>
 </head>
 <body>
     <!-- Preloader -->

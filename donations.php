@@ -89,6 +89,7 @@
           margin-bottom: 10px;
       }
     </style>
+    <?php include('assets/includes/link-js.php'); ?>
 </head>
 <body>
     <!-- Preloader Start -->

@@ -338,6 +338,7 @@ if (isset($_GET['updated']) && $_GET['updated'] == '1' && isset($_SESSION['succe
             }
         }
     </style>
+    <?php include('assets/includes/link-js.php'); ?>
 </head>
 <body>
     <!-- Preloader -->

@@ -121,6 +121,7 @@ if (isset($_GET['code'])) {
             color: #EA062B;
         }
     </style>
+    <?php include('assets/includes/link-js.php'); ?>
 </head>
 <body>
     <?php include('assets/includes/header.php'); ?>

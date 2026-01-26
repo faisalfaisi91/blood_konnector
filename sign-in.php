@@ -3,95 +3,172 @@ session_start();
 error_reporting(E_ALL);
 ini_set('display_errors', 1);
 
+// Create logs directory if it doesn't exist
+$logs_dir = __DIR__ . '/logs';
+if (!is_dir($logs_dir)) {
+    mkdir($logs_dir, 0755, true);
+}
+
+// Custom debug logging function
+function debug_log($message) {
+    $logs_dir = __DIR__ . '/logs';
+    $log_file = $logs_dir . '/signin_debug.log';
+    $timestamp = date('Y-m-d H:i:s');
+    $log_entry = "[{$timestamp}] {$message}\n";
+    file_put_contents($log_file, $log_entry, FILE_APPEND);
+    error_log($message);
+}
+
 // Database Connection
 include("assets/lib/openconn.php");
 
 $alert_script = ""; // For storing SweetAlert script
+$debug_mode = true; // Set to true to see debug info
+
+debug_log("=== NEW SIGN-IN REQUEST ===");
+debug_log("POST data: " . json_encode($_POST));
+debug_log("SESSION data before login: " . json_encode($_SESSION));
 
 if (isset($_POST['btnSignIn'])) {
     // Trim and sanitize input (remove spaces)
-    $email = trim($_POST['email']);
-    $password = $_POST['password'];
-
-    // Use prepared statement for security and case-insensitive search
-    $query = "SELECT * FROM users WHERE LOWER(email) = LOWER(?)";
-    $stmt = $conn->prepare($query);
-    $stmt->bind_param("s", $email);
-    $stmt->execute();
-    $result = $stmt->get_result();
-
-    if ($result->num_rows > 0) {
-        $user = mysqli_fetch_assoc($result);
-        
-        // Support both MD5 (legacy) and bcrypt password hashing
-        $password_match = false;
-        if (strlen($user['password']) == 32) {
-            // MD5 hash (32 characters)
-            $password_match = (md5($password) === $user['password']);
-        } else {
-            // Bcrypt hash (starts with $2y$)
-            $password_match = password_verify($password, $user['password']);
-        }
-        
-        if ($password_match) {
-            if ($user['email_verified'] == 1) {
-                $_SESSION['user_id'] = $user['user_id'];
-                $_SESSION['user_first_name'] = $user['first_name'];
-                $_SESSION['user_last_name'] = $user['last_name'];
-                $_SESSION['user_email'] = $user['email'];
-
-                $currentTime = date('Y-m-d H:i:s');
-                $updateQuery = "UPDATE users SET last_activity = '$currentTime' WHERE user_id = '{$user['user_id']}'";
-                mysqli_query($conn, $updateQuery);
-
-                $alert_script = "<script>
-                    Swal.fire({
-                        icon: 'success',
-                        title: 'Success!',
-                        text: 'Login successful! Redirecting to the homepage...',
-                        timer: 3000,
-                        showConfirmButton: false
-                    }).then(() => {
-                        window.location.href = 'profile';
-                    });
-                </script>";
-            } else {
-                $alert_script = "<script>
-                    Swal.fire({
-                        icon: 'error',
-                        title: 'Email Not Verified',
-                        text: 'Your email is not verified. Please check your inbox.',
-                        confirmButtonText: 'OK'
-                    });
-                </script>";
-            }
-        } else {
-            $alert_script = "<script>
-                Swal.fire({
-                    icon: 'error',
-                    title: 'Incorrect Password',
-                    text: 'Incorrect password. Please try again.',
-                    confirmButtonText: 'OK'
-                });
-            </script>";
-        }
-    } else {
+    $email = trim($_POST['email'] ?? '');
+    $password = $_POST['password'] ?? '';
+    
+    // Log debug info
+    if ($debug_mode) {
+        debug_log("Sign-in attempt: Email = " . $email . ", Password length = " . strlen($password));
+    }
+    
+    // Validate inputs
+    if (empty($email) || empty($password)) {
         $alert_script = "<script>
             Swal.fire({
                 icon: 'error',
-                title: 'No Account Found',
-                text: 'No account found with this email. Please sign up first.',
-                timer: 5000,
-                showConfirmButton: false
-            }).then(() => {
-                window.location.href = 'sign-up';
+                title: 'Validation Error',
+                text: 'Please enter both email and password.',
+                confirmButtonText: 'OK'
             });
         </script>";
-    }
-    
-    // Close statement if it exists
-    if (isset($stmt)) {
-        $stmt->close();
+    } else {
+        // Use prepared statement for security and case-insensitive search
+        $query = "SELECT * FROM users WHERE LOWER(email) = LOWER(?)";
+        $stmt = $conn->prepare($query);
+        
+        if (!$stmt) {
+            if ($debug_mode) {
+                debug_log("Database prepare error: " . $conn->error);
+            }
+            $alert_script = "<script>
+                Swal.fire({
+                    icon: 'error',
+                    title: 'Database Error',
+                    text: 'An error occurred. Please try again later.',
+                    confirmButtonText: 'OK'
+                });
+            </script>";
+        } else {
+            $stmt->bind_param("s", $email);
+            $stmt->execute();
+            $result = $stmt->get_result();
+            if ($result->num_rows > 0) {
+                $user = $result->fetch_assoc();
+                debug_log("User found: " . json_encode($user));
+                
+                // Support both MD5 (legacy) and bcrypt password hashing
+                $password_match = false;
+                if (strlen($user['password']) == 32) {
+                    // MD5 hash (32 characters)
+                    $md5_password = md5($password);
+                    debug_log("Comparing MD5 hashes:");
+                    debug_log("  Input password MD5: " . $md5_password);
+                    debug_log("  Database password: " . $user['password']);
+                    $password_match = ($md5_password === $user['password']);
+                    debug_log("  Match result: " . ($password_match ? 'MATCH' : 'NO MATCH'));
+                } else {
+                    // Bcrypt hash (starts with $2y$)
+                    debug_log("Comparing bcrypt hashes:");
+                    $password_match = password_verify($password, $user['password']);
+                    debug_log("  Match result: " . ($password_match ? 'MATCH' : 'NO MATCH'));
+                }
+                
+                if ($debug_mode) {
+                    debug_log("User found: " . $user['user_id'] . ", Password match: " . ($password_match ? 'YES' : 'NO'));
+                }
+                
+                if ($password_match) {
+                    if ($user['email_verified'] == 1) {
+                        debug_log("Password match confirmed for user: " . $user['user_id']);
+                        debug_log("Email verified: YES");
+                        
+                        $_SESSION['user_id'] = $user['user_id'];
+                        $_SESSION['user_first_name'] = $user['first_name'];
+                        $_SESSION['user_last_name'] = $user['last_name'];
+                        $_SESSION['user_email'] = $user['email'];
+                        
+                        // Force session write to disk
+                        session_write_close();
+                        debug_log("Session write_close() called");
+                        
+                        debug_log("SESSION variables set: " . json_encode($_SESSION));
+
+                        $currentTime = date('Y-m-d H:i:s');
+                        $updateQuery = "UPDATE users SET last_activity = ? WHERE user_id = ?";
+                        $updateStmt = $conn->prepare($updateQuery);
+                        $updateStmt->bind_param("ss", $currentTime, $user['user_id']);
+                        $updateStmt->execute();
+                        $updateStmt->close();
+                        
+                        debug_log("last_activity updated for user: " . $user['user_id']);
+                        debug_log("About to redirect user to profile page");
+                        
+                        // Force session write again before redirect
+                        session_write_close();
+                        debug_log("Second session_write_close() called before redirect");
+                        
+                        // Use server-side redirect instead of JavaScript
+                        // This ensures session is properly maintained
+                        header("Location: profile");
+                        debug_log("Server-side redirect header sent");
+                        exit();
+                    } else {
+                        $alert_script = "<script>
+                            Swal.fire({
+                                icon: 'error',
+                                title: 'Email Not Verified',
+                                text: 'Your email is not verified. Please check your inbox or contact support.',
+                                confirmButtonText: 'OK'
+                            });
+                        </script>";
+                    }
+                } else {
+                    $alert_script = "<script>
+                        Swal.fire({
+                            icon: 'error',
+                            title: 'Incorrect Password',
+                            text: 'Incorrect password. Please try again.',
+                            confirmButtonText: 'OK'
+                        });
+                    </script>";
+                }
+            } else {
+                if ($debug_mode) {
+                    debug_log("No user found with email: " . $email);
+                }
+                $alert_script = "<script>
+                    Swal.fire({
+                        icon: 'error',
+                        title: 'No Account Found',
+                        text: 'No account found with this email. Please sign up first.',
+                        timer: 5000,
+                        showConfirmButton: false
+                    }).then(() => {
+                        window.location.href = 'sign-up';
+                    });
+                </script>";
+            }
+            
+            $stmt->close();
+        }
     }
 }
 ?>
@@ -254,7 +331,7 @@ if (isset($_POST['btnSignIn'])) {
                         <h4 class="mb-4">Welcome Back!</h4>
                         <p class="mb-3">Please enter your email and password to sign in to your account.</p>
 
-                        <form method="post" class="km__main__form">
+                        <form method="post" action="sign-in" class="km__main__form">
                             <div class="row mt-3">
                                 <div class="col-sm">
                                     <input type="email" name="email" placeholder="Email" required class="form-control">
@@ -273,7 +350,7 @@ if (isset($_POST['btnSignIn'])) {
                                     <a href="forgot_password" class="text-dark">Forgot Password?</a>
                                 </div>
                             </div>
-                            <button type="submit" name="btnSignIn" class="btn btn-lg btn-primary btn-block contact__btn mt-4">
+                            <button type="submit" name="btnSignIn" value="1" class="btn btn-lg btn-primary btn-block contact__btn mt-4">
                                 Sign In <i class="fa-solid fa-angles-right"></i>
                             </button>
                             <div class="mt-3 text-center">

@@ -42,6 +42,7 @@ if (isset($_SESSION['user_id'])) {
       color: #fff;
     }
   </style>
+  <?php include('assets/includes/link-js.php'); ?>
 </head>
 
 <body>

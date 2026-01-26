@@ -155,19 +155,58 @@
               }
               $hasRecipient = $profileManager->hasRole('recipient');
               $hasDonor = $profileManager->hasRole('donor');
+              $currentProfile = $profileManager->getCurrentProfile();
+              $hasLifeline = $profileManager->hasLifelineProfile();
               if ($hasRecipient || $hasDonor): ?>
             <li class="accordion-item">
               <h2>
-                <a class="accordion-button collapsed" data-bs-toggle="collapse" href="#mobileEmergency" aria-expanded="false" aria-controls="mobileEmergency">Emergency Panel</a>
+                <a class="accordion-button collapsed" data-bs-toggle="collapse" href="#mobileEmergency" aria-expanded="false" aria-controls="mobileEmergency">Emergency & Dashboard</a>
               </h2>
               <div id="mobileEmergency" class="accordion-collapse collapse">
                 <div class="accordion-body">
-                  <?php if ($hasRecipient): ?>
-                    <a href="emergency-recipient">Emergency Recipient</a><br />
-                  <?php endif; ?>
-                  <?php if ($hasDonor): ?>
-                    <a href="emergency-donor">Emergency Donor</a><br />
-                  <?php endif; ?>
+                  <?php 
+                  // Show items based on CURRENT profile viewing
+                  if ($currentProfile === 'donor'): 
+                  ?>
+                    <a href="emergency-donor"><i class="fa-solid fa-ambulance"></i> Emergency Donor</a><br />
+                    <a href="donor-dashboard"><i class="fa-solid fa-heart"></i> Donor Dashboard</a><br />
+                  <?php 
+                  elseif ($currentProfile === 'lifeline'): 
+                  ?>
+                    <a href="lifeline-recipient-dashboard"><i class="fa-solid fa-heartbeat"></i> LifeLine Dashboard</a><br />
+                    <a href="emergency-recipient"><i class="fa-solid fa-droplet"></i> Emergency Recipient</a><br />
+                    <a href="recipient-profile"><i class="fa-solid fa-user"></i> Recipient Profile</a><br />
+                  <?php 
+                  elseif ($currentProfile === 'recipient'): 
+                  ?>
+                    <a href="emergency-recipient"><i class="fa-solid fa-droplet"></i> Emergency Recipient</a><br />
+                    <a href="recipient-dashboard"><i class="fa-solid fa-tachometer-alt"></i> Recipient Dashboard</a><br />
+                    <?php if ($hasLifeline): ?>
+                    <a href="lifeline-recipient-dashboard"><i class="fa-solid fa-heartbeat"></i> LifeLine Dashboard</a><br />
+                    <?php endif; ?>
+                  <?php 
+                  else:
+                    // No specific profile selected, show all available
+                    if ($hasDonor):
+                  ?>
+                    <a href="emergency-donor"><i class="fa-solid fa-ambulance"></i> Emergency Donor</a><br />
+                    <a href="donor-dashboard"><i class="fa-solid fa-heart"></i> Donor Dashboard</a><br />
+                    <?php 
+                    endif;
+                    if ($hasRecipient):
+                      if ($hasDonor): ?>
+                    <br />
+                      <?php endif; ?>
+                    <a href="emergency-recipient"><i class="fa-solid fa-droplet"></i> Emergency Recipient</a><br />
+                    <a href="recipient-dashboard"><i class="fa-solid fa-tachometer-alt"></i> Recipient Dashboard</a><br />
+                    <?php 
+                      if ($hasLifeline):
+                    ?>
+                    <a href="lifeline-recipient-dashboard"><i class="fa-solid fa-heartbeat"></i> LifeLine Dashboard</a><br />
+                    <?php 
+                      endif;
+                    endif;
+                  endif; ?>
                 </div>
               </div>
             </li>
@@ -199,13 +238,15 @@
               // Get user roles
               $roles = $profileManager->getUserRoles($_SESSION['user_id']);
               $currentProfile = $profileManager->getCurrentProfile();
+              $hasLifeline = $profileManager->hasLifelineProfile();
               
-              // Only show switcher if user has both roles
-              if ($roles['is_donor'] && $roles['is_recipient']): 
+              // Show switcher if user has multiple profiles or LifeLine
+              if (($roles['is_donor'] && $roles['is_recipient']) || ($roles['is_recipient'] && $hasLifeline)): 
               ?>
                 <div style="padding: 15px 0;">
                   <strong style="display: block; margin-bottom: 12px; color: #333; font-size: 16px;">Switch Profile:</strong>
                   <div class="d-flex flex-column gap-2">
+                    <?php if ($roles['is_donor']): ?>
                     <button type="button" 
                             onclick="event.preventDefault(); event.stopPropagation(); switchProfileMobile('donor'); return false;" 
                             class="btn btn-sm mobile-profile-btn <?php echo $currentProfile === 'donor' ? 'btn-danger' : 'btn-outline-danger'; ?>" 
@@ -216,14 +257,55 @@
                         <i class="fa-solid fa-check float-end mt-1"></i>
                       <?php endif; ?>
                     </button>
+                    <?php endif; ?>
+                    
+                    <?php if ($roles['is_recipient']): ?>
                     <button type="button" 
                             onclick="event.preventDefault(); event.stopPropagation(); switchProfileMobile('recipient'); return false;" 
-                            class="btn btn-sm mobile-profile-btn <?php echo $currentProfile === 'recipient' ? 'btn-danger' : 'btn-outline-danger'; ?>" 
+                            class="btn btn-sm mobile-profile-btn <?php echo $currentProfile === 'recipient' || empty($currentProfile) ? 'btn-danger' : 'btn-outline-danger'; ?>" 
                             style="width: 100%; text-align: left; padding: 12px 15px;">
                       <i class="fa-solid fa-hand-holding-heart me-2"></i>
                       <span>Recipient Profile</span>
-                      <?php if ($currentProfile === 'recipient'): ?>
+                      <?php if ($currentProfile === 'recipient' || empty($currentProfile)): ?>
                         <i class="fa-solid fa-check float-end mt-1"></i>
+                      <?php endif; ?>
+                    </button>
+                    <?php endif; ?>
+                    
+                    <?php if ($hasLifeline): ?>
+                    <a href="lifeline-recipient-dashboard" 
+                       class="btn btn-sm mobile-profile-btn <?php echo $currentProfile === 'lifeline' ? 'btn-danger' : 'btn-outline-danger'; ?>" 
+                       style="width: 100%; text-align: left; padding: 12px 15px; text-decoration: none;">
+                      <i class="fa-solid fa-heartbeat me-2"></i>
+                      <span>LifeLine Dashboard</span>
+                      <?php if ($currentProfile === 'lifeline'): ?>
+                        <i class="fa-solid fa-check float-end mt-1"></i>
+                      <?php endif; ?>
+                    </a>
+                    <?php endif; ?>
+                  </div>
+                </div>
+              <?php elseif ($roles['is_donor']): ?>
+                <div style="padding: 15px 0; color: #666;">
+                  <i class="fa-solid fa-droplet me-2"></i>
+                  <span>Donor Profile</span>
+                </div>
+              <?php elseif ($roles['is_recipient']): ?>
+                <div style="padding: 15px 0; color: #666;">
+                  <i class="fa-solid fa-hand-holding-heart me-2"></i>
+                  <span>Recipient Profile</span>
+                  <?php if ($hasLifeline): ?>
+                    <div style="margin-top: 12px;">
+                      <a href="lifeline-recipient-dashboard" class="btn btn-sm btn-primary" style="width: 100%; text-align: center;">
+                        <i class="fa-solid fa-heartbeat"></i> LifeLine Dashboard
+                      </a>
+                    </div>
+                  <?php endif; ?>
+                </div>
+              <?php endif; ?>
+            </div>
+          </li>
+          <?php endif; ?>
                       <?php endif; ?>
                     </button>
                   </div>

@@ -166,6 +166,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
             }
         }
     </style>
+    <?php include('assets/includes/link-js.php'); ?>
 </head>
 <body>
     <?php include('assets/includes/preloader.php'); ?>

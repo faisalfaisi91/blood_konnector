@@ -396,6 +396,7 @@
             background-color: #c10a24;
         }
     </style>
+    <?php include('assets/includes/link-js.php'); ?>
 </head>
 <body>
     <!-- Preloader -->

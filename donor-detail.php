@@ -52,6 +52,7 @@ if ($profileManager->isLoggedIn()) {
             .btn-chat { padding: 12px 30px; font-size: 16px; }
         }
     </style>
+    <?php include('assets/includes/link-js.php'); ?>
 </head>
 <body>
     <?php include('assets/includes/preloader.php'); ?>

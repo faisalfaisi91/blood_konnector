@@ -123,6 +123,21 @@ class ProfileManager {
      */
     public function requireLogin($redirect_url = 'sign-in') {
         if (!$this->isLoggedIn()) {
+            // Debug logging for session loss
+            $logs_dir = dirname(__DIR__, 2) . '/logs';
+            if (!is_dir($logs_dir)) {
+                mkdir($logs_dir, 0755, true);
+            }
+            $log_file = $logs_dir . '/signin_debug.log';
+            $timestamp = date('Y-m-d H:i:s');
+            
+            $log_entry = "[{$timestamp}] ProfileManager->requireLogin(): User NOT logged in\n";
+            $log_entry .= "[{$timestamp}]   isLoggedIn() returned FALSE\n";
+            $log_entry .= "[{$timestamp}]   user_id value: " . ($this->user_id ?? 'NULL') . "\n";
+            $log_entry .= "[{$timestamp}]   Redirecting to: {$redirect_url}\n";
+            
+            file_put_contents($log_file, $log_entry, FILE_APPEND);
+            
             $_SESSION['error'] = "Please login to view this page!";
             header("Location: $redirect_url");
             exit();
@@ -314,6 +329,60 @@ class ProfileManager {
     }
     
     /**
+     * Check if user has LifeLine membership/profile
+     * @param string|null $check_user_id User ID to check (null = current user)
+     * @return bool
+     */
+    public function hasLifelineProfile($check_user_id = null) {
+        $user_to_check = $check_user_id ?? $this->user_id;
+        
+        if (empty($user_to_check)) {
+            return false;
+        }
+        
+        // Check if user has LifeLine profile and is a recipient
+        if (!$this->hasRole('recipient')) {
+            return false;
+        }
+        
+        $stmt = $this->conn->prepare("SELECT id FROM emergency_profiles WHERE recipient_id = ? LIMIT 1");
+        $stmt->bind_param("s", $user_to_check);
+        $stmt->execute();
+        $result = $stmt->get_result();
+        $has_profile = $result->num_rows > 0;
+        $stmt->close();
+        
+        return $has_profile;
+    }
+    
+    /**
+     * Get LifeLine profile data for recipient
+     * @param string|null $check_user_id User ID to check (null = current user)
+     * @return array|null LifeLine profile data or null
+     */
+    public function getLifelineProfile($check_user_id = null) {
+        $user_to_check = $check_user_id ?? $this->user_id;
+        
+        if (empty($user_to_check) || !$this->hasLifelineProfile($user_to_check)) {
+            return null;
+        }
+        
+        $stmt = $this->conn->prepare("SELECT * FROM emergency_profiles WHERE recipient_id = ? LIMIT 1");
+        $stmt->bind_param("s", $user_to_check);
+        $stmt->execute();
+        $result = $stmt->get_result();
+        
+        if ($result->num_rows > 0) {
+            $profile = $result->fetch_assoc();
+            $stmt->close();
+            return $profile;
+        }
+        
+        $stmt->close();
+        return null;
+    }
+    
+    /**
      * Generate profile switcher HTML (for header/navigation)
      * @return string HTML for profile switcher dropdown
      */
@@ -324,6 +393,7 @@ class ProfileManager {
         
         $roles = $this->getUserRoles();
         $current_profile = $this->getCurrentProfile();
+        $has_lifeline = $this->hasLifelineProfile();
         
         // If user has no profiles, return nothing
         if (!$roles['is_donor'] && !$roles['is_recipient']) {
@@ -336,15 +406,60 @@ class ProfileManager {
         }
         
         if (!$roles['is_donor'] && $roles['is_recipient']) {
-            return '<span class="profile-badge recipient-badge">Recipient Profile</span>';
+            // Show both recipient profile and lifeline if available
+            $html = '<div class="profile-switcher-dropdown">';
+            $html .= '<button class="profile-switcher-btn" id="profileSwitcherBtn">';
+            
+            if ($current_profile === 'lifeline') {
+                $html .= '<i class="fas fa-heartbeat"></i> ';
+                $html .= '<span class="current-profile-label">LifeLine</span>';
+            } else {
+                $html .= '<i class="fas fa-user-circle"></i> ';
+                $html .= '<span class="current-profile-label">Recipient</span>';
+            }
+            
+            $html .= ' <i class="fas fa-chevron-down"></i>';
+            $html .= '</button>';
+            $html .= '<div class="profile-switcher-menu" id="profileSwitcherMenu">';
+            
+            // Recipient Profile Option
+            $active_class = ($current_profile === 'recipient' || empty($current_profile)) ? 'active' : '';
+            $html .= '<a href="recipient-profile" class="profile-option ' . $active_class . '">';
+            $html .= '<i class="fas fa-hospital-user"></i> Recipient Profile';
+            if ($current_profile === 'recipient' || empty($current_profile)) {
+                $html .= ' <i class="fas fa-check-circle"></i>';
+            }
+            $html .= '</a>';
+            
+            // LifeLine Profile Option (if user has LifeLine)
+            if ($has_lifeline) {
+                $active_class = $current_profile === 'lifeline' ? 'active' : '';
+                $html .= '<a href="lifeline-recipient-dashboard" class="profile-option ' . $active_class . '">';
+                $html .= '<i class="fas fa-heartbeat"></i> LifeLine Dashboard';
+                if ($current_profile === 'lifeline') {
+                    $html .= ' <i class="fas fa-check-circle"></i>';
+                }
+                $html .= '</a>';
+            }
+            
+            $html .= '</div>';
+            $html .= '</div>';
+            
+            return $html;
         }
         
         // User has both roles - show switcher dropdown
-        $current_label = $current_profile === 'donor' ? 'Donor' : ($current_profile === 'recipient' ? 'Recipient' : 'Select Profile');
+        $current_label = $current_profile === 'donor' ? 'Donor' : ($current_profile === 'lifeline' ? 'LifeLine' : ($current_profile === 'recipient' ? 'Recipient' : 'Select Profile'));
         
         $html = '<div class="profile-switcher-dropdown">';
         $html .= '<button class="profile-switcher-btn" id="profileSwitcherBtn">';
-        $html .= '<i class="fas fa-user-circle"></i> ';
+        
+        if ($current_profile === 'lifeline') {
+            $html .= '<i class="fas fa-heartbeat"></i> ';
+        } else {
+            $html .= '<i class="fas fa-user-circle"></i> ';
+        }
+        
         $html .= '<span class="current-profile-label">' . htmlspecialchars($current_label) . '</span>';
         $html .= ' <i class="fas fa-chevron-down"></i>';
         $html .= '</button>';
@@ -368,6 +483,17 @@ class ProfileManager {
                 $html .= ' <i class="fas fa-check-circle"></i>';
             }
             $html .= '</a>';
+            
+            // LifeLine Profile Option (if user has LifeLine)
+            if ($has_lifeline) {
+                $active_class = $current_profile === 'lifeline' ? 'active' : '';
+                $html .= '<a href="lifeline-recipient-dashboard" class="profile-option ' . $active_class . '">';
+                $html .= '<i class="fas fa-heartbeat"></i> LifeLine Dashboard';
+                if ($current_profile === 'lifeline') {
+                    $html .= ' <i class="fas fa-check-circle"></i>';
+                }
+                $html .= '</a>';
+            }
         }
         
         $html .= '</div>';

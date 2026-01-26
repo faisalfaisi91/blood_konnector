@@ -174,6 +174,7 @@ if (isset($_POST['btnSignUp'])) {
             }
         }
     </style>
+    <?php include('assets/includes/link-js.php'); ?>
 </head>
 <body>
 

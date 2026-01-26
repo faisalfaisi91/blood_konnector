@@ -35,6 +35,7 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
     <link rel="stylesheet" href="style.css">
+    <?php include('assets/includes/link-js.php'); ?>
 </head>
 <body class="bg-gradient-to-br from-red-50 to-gray-100 flex items-center justify-center min-h-screen p-4">
     <div class="bg-white rounded-xl shadow-xl overflow-hidden w-full max-w-md">

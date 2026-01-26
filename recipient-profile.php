@@ -329,7 +329,7 @@
             animation: fadeIn 0.6s ease-out forwards;
         }
     </style>
-
+    <?php include('assets/includes/link-js.php'); ?>
 </body>
 </html>
 </head>

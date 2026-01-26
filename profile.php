@@ -1,13 +1,50 @@
 <?php
+// IMMEDIATE logging - before session_start()
+$logs_dir = __DIR__ . '/logs';
+if (!is_dir($logs_dir)) {
+    mkdir($logs_dir, 0755, true);
+}
+$log_file = $logs_dir . '/signin_debug.log';
+$timestamp = date('Y-m-d H:i:s');
+file_put_contents($log_file, "[{$timestamp}] PROFILE.PHP SCRIPT STARTING (before session_start)\n", FILE_APPEND);
+
 session_start();
+file_put_contents($log_file, "[{$timestamp}] session_start() called\n", FILE_APPEND);
+
 include("assets/lib/openconn.php");
+file_put_contents($log_file, "[{$timestamp}] openconn.php included\n", FILE_APPEND);
+
 require_once("assets/lib/ProfileManager.php");
+file_put_contents($log_file, "[{$timestamp}] ProfileManager.php included\n", FILE_APPEND);
+
+// Custom debug logging
+function debug_log($message) {
+    $logs_dir = __DIR__ . '/logs';
+    if (!is_dir($logs_dir)) {
+        mkdir($logs_dir, 0755, true);
+    }
+    $log_file = $logs_dir . '/signin_debug.log';
+    $timestamp = date('Y-m-d H:i:s');
+    $log_entry = "[{$timestamp}] {$message}\n";
+    file_put_contents($log_file, $log_entry, FILE_APPEND);
+    error_log($message);
+}
+
+debug_log("=== PROFILE PAGE LOADED ===");
+debug_log("SESSION data in profile.php: " . json_encode($_SESSION));
+debug_log("Session ID: " . session_id());
+debug_log("REQUEST URI: " . $_SERVER['REQUEST_URI']);
+debug_log("Current user_id in SESSION: " . ($_SESSION['user_id'] ?? 'NOT SET'));
 
 // =============== 1. INITIALIZE PROFILE MANAGER ===============
 $profileManager = new ProfileManager($conn);
+debug_log("ProfileManager initialized");
+debug_log("isLoggedIn(): " . ($profileManager->isLoggedIn() ? 'TRUE' : 'FALSE'));
 
 // =============== 2. MUST BE LOGGED IN ===============
+debug_log("About to call requireLogin()...");
 $profileManager->requireLogin();
+debug_log("requireLogin() passed - user is logged in");
 
 // =============== 3. UPDATE LAST ACTIVITY ===============
 $profileManager->updateLastActivity();
@@ -125,6 +162,7 @@ $online = $profileManager->isUserOnline();
       .profile-icon { width:70px; height:70px; font-size:30px; }
     }
   </style>
+  <?php include('assets/includes/link-js.php'); ?>
 </head>
 <body>
   <?php include('assets/includes/preloader.php'); ?>

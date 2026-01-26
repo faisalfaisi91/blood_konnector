@@ -88,6 +88,7 @@ $conversations = $stmt->get_result();
             color: #999;
         }
     </style>
+    <?php include('assets/includes/link-js.php'); ?>
 </head>
 <body>
     <?php include('assets/includes/header.php'); ?>

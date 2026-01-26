@@ -153,6 +153,7 @@ $conn->query("UPDATE users SET last_activity = NOW() WHERE user_id = '$donor_id'
         }
     }
     </style>
+    <?php include('assets/includes/link-js.php'); ?>
 </head>
 <body>
     <?php include('assets/includes/header.php'); ?>

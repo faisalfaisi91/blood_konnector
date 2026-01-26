@@ -40,16 +40,13 @@
         <div class="row align-items-center position-relative">
           <div class="col-xl-2 col-lg-2 col-md-4 col-6">
             <div class="header_logo">
-                <a href="<?php echo isset($_SESSION['user_id']) ? 'dashboard' : 'index'; ?>">
+                <a href="/">
                     <img src="assets/images/logo.png" alt="Blood Konnector Logo" class="img-fluid">
                 </a>
             </div>
           </div>
           <div class="col-xl-7 col-lg-7 d-none d-xxl-block d-xl-block">
-            <ul class="main_menu">
-              <li class="position-relative">
-                <a href="<?php echo isset($_SESSION['user_id']) ? 'dashboard' : 'index'; ?>">Home</a>
-              </li>
+            <ul class="main_menu" style="margin-right: 50px;">
               <li class="position-relative">
                 <a href="about">About Us</a>
               </li>
@@ -70,16 +67,59 @@
                   }
                   $hasRecipient = $profileManager->hasRole('recipient');
                   $hasDonor = $profileManager->hasRole('donor');
+                  $currentProfile = $profileManager->getCurrentProfile();
+                  $hasLifeline = $profileManager->hasLifelineProfile();
+                  
+                  // Only show Emergency dropdown if user has at least one role
                   if ($hasRecipient || $hasDonor): ?>
-                    <li class="position-relative dropdown">
-                    <a class="dropdown-toggle" href="#" id="emergencyMenu" role="button" data-bs-toggle="dropdown" aria-expanded="false">Emergency</a>
+                    <li class="nav-item dropdown">
+                    <a class="nav-link dropdown-toggle" href="javascript:void(0);" id="emergencyMenu" role="button" data-bs-toggle="dropdown" aria-expanded="false">Emergency</a>
                     <ul class="dropdown-menu" aria-labelledby="emergencyMenu">
-                      <?php if ($hasRecipient): ?>
-                        <li><a class="dropdown-item" href="emergency-recipient">Emergency Recipient</a></li>
-                      <?php endif; ?>
-                      <?php if ($hasDonor): ?>
-                        <li><a class="dropdown-item" href="emergency-donor">Emergency Donor</a></li>
-                      <?php endif; ?>
+                      <?php 
+                      // Show items based on CURRENT profile viewing
+                      if ($currentProfile === 'donor'): 
+                      ?>
+                        <li><a class="dropdown-item" href="emergency-donor"><i class="fa-solid fa-ambulance"></i> Emergency Donor</a></li>
+                        <li><a class="dropdown-item" href="donor-dashboard"><i class="fa-solid fa-heart"></i> Donor Dashboard</a></li>
+                      <?php 
+                      elseif ($currentProfile === 'lifeline'): 
+                      ?>
+                        <li><a class="dropdown-item" href="lifeline-recipient-dashboard"><i class="fa-solid fa-heartbeat"></i> LifeLine Dashboard</a></li>
+                        <li><a class="dropdown-item" href="emergency-recipient"><i class="fa-solid fa-droplet"></i> Emergency Recipient</a></li>
+                        <li><a class="dropdown-item" href="recipient-profile"><i class="fa-solid fa-user"></i> Recipient Profile</a></li>
+                      <?php 
+                      elseif ($currentProfile === 'recipient'): 
+                      ?>
+                        <li><a class="dropdown-item" href="emergency-recipient"><i class="fa-solid fa-droplet"></i> Emergency Recipient</a></li>
+                        <li><a class="dropdown-item" href="recipient-dashboard"><i class="fa-solid fa-tachometer-alt"></i> Recipient Dashboard</a></li>
+                        <?php if ($hasLifeline): ?>
+                        <li><hr class="dropdown-divider"></li>
+                        <li><a class="dropdown-item" href="lifeline-recipient-dashboard"><i class="fa-solid fa-heartbeat"></i> LifeLine Dashboard</a></li>
+                        <?php endif; ?>
+                      <?php 
+                      else:
+                        // No specific profile selected, show all available
+                        if ($hasDonor):
+                      ?>
+                        <li><a class="dropdown-item" href="emergency-donor"><i class="fa-solid fa-ambulance"></i> Emergency Donor</a></li>
+                        <li><a class="dropdown-item" href="donor-dashboard"><i class="fa-solid fa-heart"></i> Donor Dashboard</a></li>
+                      <?php 
+                        endif;
+                        if ($hasRecipient):
+                          if ($hasDonor): ?>
+                        <li><hr class="dropdown-divider"></li>
+                          <?php endif; ?>
+                        <li><a class="dropdown-item" href="emergency-recipient"><i class="fa-solid fa-droplet"></i> Emergency Recipient</a></li>
+                        <li><a class="dropdown-item" href="recipient-dashboard"><i class="fa-solid fa-tachometer-alt"></i> Recipient Dashboard</a></li>
+                        <?php 
+                          if ($hasLifeline):
+                        ?>
+                        <li><hr class="dropdown-divider"></li>
+                        <li><a class="dropdown-item" href="lifeline-recipient-dashboard"><i class="fa-solid fa-heartbeat"></i> LifeLine Dashboard</a></li>
+                        <?php 
+                          endif;
+                        endif;
+                      endif; ?>
                     </ul>
                     </li>
                   <?php endif;

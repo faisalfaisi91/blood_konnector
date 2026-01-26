@@ -26,6 +26,7 @@ if (isset($_SESSION['user_id'])) {
 <html lang="en">
 <head>
   <?php include('assets/includes/link-css.php'); ?>
+  <?php include('assets/includes/link-js.php'); ?>
 </head>
 
 <body>

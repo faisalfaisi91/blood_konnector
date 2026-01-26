@@ -273,6 +273,7 @@ $onlineStatus = $profileManager->isUserOnline();
             }
         }
     </style>
+    <?php include('assets/includes/link-js.php'); ?>
 </head>
 <body>
     <!-- Preloader -->

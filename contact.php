@@ -57,7 +57,7 @@
       }
     }
   </style>
-
+  <?php include('assets/includes/link-js.php'); ?>
 </head>
 
 <body>
