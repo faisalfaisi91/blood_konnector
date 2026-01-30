@@ -21,19 +21,18 @@ $donorStmt->close();
 $donorBloodType = $donorInfo['blood_type'] ?? '';
 $donorLocation = $donorInfo['location'] ?? '';
 
-// Fetch notifications for this donor
+// Fetch notifications for this donor (requests that match donor's profile)
 $notifications = [];
 $notifStmt = $conn->prepare("
-    SELECT ln.*, lr.blood_type, lr.city, lr.urgency, lr.note,
-           u.first_name AS recipient_first, u.last_name AS recipient_last
-    FROM lifeline_notifications ln
-    JOIN lifeline_requests lr ON lr.id = ln.request_id
-    JOIN users u ON u.user_id = lr.recipient_id
-    WHERE ln.donor_id = ?
-    ORDER BY ln.created_at DESC
+    SELECT lr.*, 
+           u.first_name AS recipient_first, u.last_name AS recipient_last, u.profile_pic
+    FROM lifeline_requests lr
+    LEFT JOIN users u ON u.user_id = lr.recipient_id
+    WHERE lr.blood_type = ? AND lr.status IN ('open', 'pending')
+    ORDER BY lr.created_at DESC
     LIMIT 50
 ");
-$notifStmt->bind_param("s", $userId);
+$notifStmt->bind_param("s", $donorBloodType);
 $notifStmt->execute();
 $notifResult = $notifStmt->get_result();
 while ($row = $notifResult->fetch_assoc()) {
@@ -47,19 +46,16 @@ if (!empty($donorBloodType)) {
     $availableStmt = $conn->prepare("
         SELECT lr.*, 
                u.first_name AS recipient_first, u.last_name AS recipient_last,
-               u.profile_pic AS recipient_pic,
-               ln.status AS notification_status
+               u.profile_pic AS recipient_pic
         FROM lifeline_requests lr
         JOIN users u ON u.user_id = lr.recipient_id
-        LEFT JOIN lifeline_notifications ln ON ln.request_id = lr.id AND ln.donor_id = ?
-        WHERE lr.status = 'pending'
+        WHERE lr.status IN ('open', 'pending')
           AND lr.blood_type = ?
-          AND (? = '' OR LOWER(lr.city) LIKE LOWER(CONCAT('%', ?, '%')) OR LOWER(?) LIKE LOWER(CONCAT('%', lr.city, '%')))
-          AND (lr.accepted_donor_id IS NULL OR lr.accepted_donor_id != ?)
+          AND (? = '' OR LOWER(lr.city) LIKE LOWER(CONCAT('%', ?, '%')))
         ORDER BY lr.created_at DESC
         LIMIT 30
     ");
-    $availableStmt->bind_param("ssssss", $userId, $donorBloodType, $donorLocation, $donorLocation, $donorLocation, $userId);
+    $availableStmt->bind_param("sss", $donorBloodType, $donorLocation, $donorLocation);
     $availableStmt->execute();
     $availableRes = $availableStmt->get_result();
     while ($row = $availableRes->fetch_assoc()) {
@@ -76,12 +72,10 @@ $acceptedStmt = $conn->prepare("
            u.profile_pic AS recipient_pic
     FROM lifeline_requests lr
     JOIN users u ON u.user_id = lr.recipient_id
-    WHERE lr.accepted_donor_id = ?
-      AND lr.status IN ('accepted', 'completed')
+    WHERE lr.status IN ('confirmed', 'completed')
     ORDER BY lr.created_at DESC
     LIMIT 30
 ");
-$acceptedStmt->bind_param("s", $userId);
 $acceptedStmt->execute();
 $acceptedRes = $acceptedStmt->get_result();
 while ($row = $acceptedRes->fetch_assoc()) {
@@ -189,6 +183,7 @@ $acceptedStmt->close();
             font-weight: bold;
         }
     </style>
+    <?php /* include('assets/includes/link-js.php'); */ ?>
 </head>
 <body>
 <?php 
@@ -286,7 +281,7 @@ include('assets/includes/link-css.php');
         <div class="requests-list">
             <?php foreach ($availableRequests as $req): ?>
                 <div class="request-card pending position-relative" data-request-id="<?= (int)$req['id']; ?>">
-                    <?php if ($req['notification_status'] === 'sent'): ?>
+                    <?php if ($req['status'] === 'pending'): ?>
                         <span class="notification-badge">!</span>
                     <?php endif; ?>
                     
@@ -336,9 +331,14 @@ include('assets/includes/link-css.php');
     <?php endif; ?>
 </section>
 
+
 <?php 
 include('assets/includes/footer.php'); 
-include('assets/includes/link-js.php');
+// Only include link-js.php ONCE per page to avoid JS redeclaration errors
+if (!defined('LINK_JS_INCLUDED')) {
+    define('LINK_JS_INCLUDED', true);
+    include('assets/includes/link-js.php');
+}
 ?>
 
 <script>

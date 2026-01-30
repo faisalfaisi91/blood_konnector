@@ -326,6 +326,28 @@ $onlineStatus = $profileManager->isUserOnline();
                                 <p><strong>Health Status:</strong> <?= htmlspecialchars($donor['health_status'] ? $donor['health_status'] : 'Not specified') ?></p>
                                 <p><strong>Medical Conditions:</strong> <?= htmlspecialchars($donor['medical_conditions'] ? $donor['medical_conditions'] : 'None') ?></p>
                                 <p><strong>Last Donation Date:</strong> <?= $donor['last_donation_date'] ? htmlspecialchars(date('F j, Y', strtotime($donor['last_donation_date']))) : 'Not available' ?></p>
+
+                                <?php if (!empty($donor['blood_test_report'])): ?>
+                                    <div class="mt-3">
+                                        <strong>Blood Test Report:</strong><br>
+                                        <?php if (preg_match('/\.(jpg|jpeg|png|gif)$/i', $donor['blood_test_report'])): ?>
+                                            <img src="<?= htmlspecialchars($donor['blood_test_report']) ?>" alt="Blood Test Report" style="max-width:200px; max-height:200px; border-radius:8px; margin-top:8px;">
+                                        <?php else: ?>
+                                            <a href="<?= htmlspecialchars($donor['blood_test_report']) ?>" target="_blank" class="btn btn-outline-info btn-sm mt-2">View Blood Test Report</a>
+                                        <?php endif; ?>
+                                    </div>
+                                <?php endif; ?>
+
+                                <?php if (!empty($donor['medical_reports'])): ?>
+                                    <div class="mt-3">
+                                        <strong>Medical Reports:</strong><br>
+                                        <?php if (preg_match('/\.(jpg|jpeg|png|gif)$/i', $donor['medical_reports'])): ?>
+                                            <img src="<?= htmlspecialchars($donor['medical_reports']) ?>" alt="Medical Report" style="max-width:200px; max-height:200px; border-radius:8px; margin-top:8px;">
+                                        <?php else: ?>
+                                            <a href="<?= htmlspecialchars($donor['medical_reports']) ?>" target="_blank" class="btn btn-outline-info btn-sm mt-2">View Medical Report</a>
+                                        <?php endif; ?>
+                                    </div>
+                                <?php endif; ?>
                             </div>
 
                             <!-- Availability -->

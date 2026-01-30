@@ -3,25 +3,27 @@
  * Handles dropdown toggling and user interactions
  */
 
-// Track if already initialized to prevent duplicate listeners
-let profileSwitcherInitialized = false;
+// Track if already initialized to prevent duplicate listeners (use window-scoped variable to avoid redeclaration)
+if (typeof window.profileSwitcherInitialized === 'undefined') {
+    window.profileSwitcherInitialized = false;
+}
 
 // Initialize profile switcher - use both DOMContentLoaded and immediate execution
 function initProfileSwitcher() {
     // Prevent multiple initializations
-    if (profileSwitcherInitialized) {
+    if (window.profileSwitcherInitialized) {
         return;
     }
-    
+
     const switcherBtn = document.getElementById('profileSwitcherBtn');
     const switcherMenu = document.getElementById('profileSwitcherMenu');
-    
+
     if (!switcherBtn || !switcherMenu) {
         return; // Elements don't exist on this page
     }
-    
+
     // Mark as initialized
-    profileSwitcherInitialized = true;
+    window.profileSwitcherInitialized = true;
     
     // Ensure button is clickable with highest priority
     switcherBtn.style.pointerEvents = 'auto';

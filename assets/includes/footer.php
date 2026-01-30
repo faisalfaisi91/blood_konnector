@@ -1,4 +1,6 @@
 <footer>
+  <!-- Font Awesome for icons (ensure available on all pages) -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <div class="footer_top pt-115">
       <div class="container ">
         <div class="row border-bottom justify-content-center">
@@ -188,7 +190,6 @@
                     <a href="recipient-dashboard"><i class="fa-solid fa-tachometer-alt"></i> Recipient Dashboard</a><br />
                     <?php if ($hasLifeline): ?>
                     <a href="lifeline-recipient-dashboard"><i class="fa-solid fa-heartbeat"></i> LifeLine Dashboard</a><br />
-                    <?php endif; ?>
                   <?php 
                   else:
                     // No specific profile selected, show all available
@@ -341,20 +342,6 @@
                     </button>
                   </div>
                 </div>
-              <?php elseif ($roles['is_donor']): ?>
-                <div style="padding: 15px 0; color: #666;">
-                  <i class="fa-solid fa-droplet me-2"></i>
-                  <span>Donor Profile</span>
-                </div>
-              <?php elseif ($roles['is_recipient']): ?>
-                <div style="padding: 15px 0; color: #666;">
-                  <i class="fa-solid fa-hand-holding-heart me-2"></i>
-                  <span>Recipient Profile</span>
-                </div>
-              <?php endif; ?>
-            </div>
-          </li>
-          <?php endif; ?>
         </ul>
       </div>
     </div>

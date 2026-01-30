@@ -525,7 +525,7 @@
                                         </div>
                                         <div class="col-12">
                                             <label class="form-label">Full Address *</label>
-                                            <textarea name="full_address" class="form-control" rows="2" required><?php echo htmlspecialchars($_SESSION['form_data']['full_address'] ?? ''); ?></textarea>
+                                            <textarea name="full_address" id="full_address" class="form-control" rows="2" required><?php echo htmlspecialchars($_SESSION['form_data']['full_address'] ?? ''); ?></textarea>
                                         </div>
                                     </div>
                                 </div>
@@ -936,8 +936,8 @@
                 
                 requiredFields.forEach(field => {
                     const element = document.getElementById(field.id);
-                    if (!element.value.trim()) {
-                        element.classList.add('is-invalid');
+                    if (!element || !element.value || !element.value.trim()) {
+                        if (element) element.classList.add('is-invalid');
                         const errorElement = document.getElementById(`${field.id}_error`);
                         if (errorElement) {
                             errorElement.textContent = `${field.label} is required`;

@@ -46,7 +46,7 @@
             </div>
           </div>
           <div class="col-xl-7 col-lg-7 d-none d-xxl-block d-xl-block">
-            <ul class="main_menu" style="margin-right: 50px;">
+            <ul class="main_menu" style="margin-right: 30px;">
               <li class="position-relative">
                 <a href="about">About Us</a>
               </li>
