@@ -39,11 +39,11 @@
     $donorsPerPage = 6;
     $offset = ($page - 1) * $donorsPerPage;
 
-    // Build the query with filters
+    // Build the query with filters (exclude donors with is_available = 0)
     $query = "SELECT d.*, u.last_activity 
               FROM donors d 
               JOIN users u ON d.user_id = u.user_id 
-              WHERE 1=1";
+              WHERE COALESCE(d.is_available, 1) = 1";
 
     $params = array();
     $types = '';
@@ -165,7 +165,7 @@
                         </p>
                         <p class="last-donation">
                             <i class="fas fa-calendar-alt me-2"></i>Last Donation: ' . 
-                            ($donor['last_donation_date'] ? date('F j, Y', strtotime($donor['last_donation_date'])) : 'Never') . '
+                            ($donor['last_donation_date'] ? format_display_date($donor['last_donation_date'], false) : 'Never') . '
                         </p>
                     </div>
                     <div class="donor-card-footer">

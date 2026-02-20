@@ -266,7 +266,7 @@ $recent = $conn->query("
                                         <span class="px-2 py-1 rounded text-xs bg-gray-100"><?= htmlspecialchars($row['status']) ?></span>
                                     </td>
                                     <td class="px-4 py-2 text-gray-700">
-                                        <?= htmlspecialchars($row['preferred_date'] . ' ' . $row['preferred_time']) ?>
+                                        <?= htmlspecialchars(format_display_date($row['preferred_date'] . ' ' . $row['preferred_time'])) ?>
                                     </td>
                                     <td class="px-4 py-2 text-gray-700"><?= htmlspecialchars($row['urgency']) ?></td>
                                     <td class="px-4 py-2 text-gray-700"><?= htmlspecialchars($row['location']) ?></td>

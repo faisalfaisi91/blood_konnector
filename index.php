@@ -11,6 +11,30 @@ if (isset($_SESSION['user_id'])) {
     $stmt->bind_param("si", $currentTime, $userId);
     $stmt->execute();
 }
+
+// Success statistics for home page
+$stats = [
+    'completed_donations' => 0,
+    'active_donors' => 0,
+    'lives_impacted' => 0,
+];
+$erTable = $conn->query("SHOW TABLES LIKE 'emergency_requests'");
+if ($erTable && $erTable->num_rows > 0) {
+    $cr = $conn->query("SELECT COUNT(*) as cnt FROM emergency_requests WHERE status = 'completed'");
+    if ($cr && $row = $cr->fetch_assoc()) {
+        $stats['completed_donations'] = (int)$row['cnt'];
+    }
+    $cr && $cr->free();
+}
+$donorsCheck = $conn->query("SHOW TABLES LIKE 'donors'");
+if ($donorsCheck && $donorsCheck->num_rows > 0) {
+    $dr = $conn->query("SELECT COUNT(*) as cnt FROM donors");
+    if ($dr && $row = $dr->fetch_assoc()) {
+        $stats['active_donors'] = (int)$row['cnt'];
+    }
+    $dr && $dr->free();
+}
+$stats['lives_impacted'] = $stats['completed_donations'];
 ?>
 
 <!DOCTYPE html>
@@ -343,10 +367,43 @@ if (isset($_SESSION['user_id'])) {
                 <div class="hero-buttons">
                 <?php if (isset($_SESSION['user_id'])): ?>
                     <a href="profile" class="btn btn-primary">Profile</a>
+                    <a href="emergency-recipient" class="btn btn-outline-light">Request Blood (Emergency)</a>
+                    <a href="lifeline-panel" class="btn btn-outline-light">Request Blood (Lifeline)</a>
                 <?php else: ?>
                     <a href="sign-up" class="btn btn-primary">Sign Up Now</a>
                     <a href="sign-in" class="btn btn-outline-light">Sign In</a>
+                    <a href="sign-in?request=blood" class="btn btn-outline-light">Request Blood</a>
                 <?php endif; ?>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Success Statistics Section -->
+    <section class="stats-section py-5" style="background: linear-gradient(135deg, var(--secondary-color) 0%, #374151 100%); color: var(--white);">
+        <div class="container">
+            <h2 class="text-center mb-4" style="font-weight: 600; font-size: 1.8rem;">Our Impact</h2>
+            <div class="row g-4 text-center">
+                <div class="col-md-4">
+                    <div class="stat-card p-4 rounded">
+                        <i class="fas fa-check-circle fa-3x mb-2" style="opacity: 0.9;"></i>
+                        <h3 class="mb-1" style="font-size: 2.5rem; font-weight: 700;"><?= number_format($stats['completed_donations']) ?></h3>
+                        <p class="mb-0 opacity-90">Successful Donations</p>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <div class="stat-card p-4 rounded">
+                        <i class="fas fa-users fa-3x mb-2" style="opacity: 0.9;"></i>
+                        <h3 class="mb-1" style="font-size: 2.5rem; font-weight: 700;"><?= number_format($stats['active_donors']) ?></h3>
+                        <p class="mb-0 opacity-90">Active Donors</p>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <div class="stat-card p-4 rounded">
+                        <i class="fas fa-heartbeat fa-3x mb-2" style="opacity: 0.9;"></i>
+                        <h3 class="mb-1" style="font-size: 2.5rem; font-weight: 700;"><?= number_format($stats['lives_impacted']) ?></h3>
+                        <p class="mb-0 opacity-90">Lives Impacted</p>
+                    </div>
                 </div>
             </div>
         </div>
@@ -376,6 +433,44 @@ if (isset($_SESSION['user_id'])) {
                         <i class="fas fa-bullhorn"></i>
                         <h3>Raise Awareness</h3>
                         <p>Educate communities about the importance of blood donation to inspire more people to contribute.</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Request Blood Quick Access -->
+    <section class="py-5" style="background: #f8f9fa;">
+        <div class="container">
+            <h2 class="text-center mb-4" style="color: var(--secondary-color); font-weight: 600;">Need Blood?</h2>
+            <p class="text-center text-muted mb-4">Choose the option that fits your situation. Sign in or register to request.</p>
+            <div class="row g-4 justify-content-center">
+                <div class="col-md-5">
+                    <div class="card h-100 shadow-sm border-0" style="border-radius: 12px; overflow: hidden;">
+                        <div class="card-body p-4 text-center">
+                            <i class="fas fa-ambulance fa-3x text-danger mb-3"></i>
+                            <h4 class="card-title">Emergency Request</h4>
+                            <p class="card-text text-muted">Immediate blood need (accidents, surgeries, transfusion within hours).</p>
+                            <?php if (isset($_SESSION['user_id'])): ?>
+                                <a href="emergency-recipient" class="btn btn-danger">Request Blood Now</a>
+                            <?php else: ?>
+                                <a href="sign-in?return=emergency-recipient" class="btn btn-danger">Sign In to Request</a>
+                            <?php endif; ?>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-5">
+                    <div class="card h-100 shadow-sm border-0" style="border-radius: 12px; overflow: hidden;">
+                        <div class="card-body p-4 text-center">
+                            <i class="fas fa-heartbeat fa-3x text-danger mb-3"></i>
+                            <h4 class="card-title">Lifeline Panel</h4>
+                            <p class="card-text text-muted">Regular/recurring needs (Thalassemia, Cancer, chronic conditions).</p>
+                            <?php if (isset($_SESSION['user_id'])): ?>
+                                <a href="lifeline-panel" class="btn btn-danger">Join Lifeline</a>
+                            <?php else: ?>
+                                <a href="sign-in?return=lifeline-panel" class="btn btn-danger">Sign In to Join</a>
+                            <?php endif; ?>
+                        </div>
                     </div>
                 </div>
             </div>

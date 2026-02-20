@@ -24,6 +24,17 @@ if ($profileResult && $profileResult->num_rows > 0) {
 }
 $profileStmt->close();
 
+// Check approval_status if column exists (for dashboard view - show message when pending/rejected)
+$approvalPending = false;
+$approvalRejected = false;
+if ($profileExists && $lifelineProfile && isset($lifelineProfile['approval_status'])) {
+    if ($lifelineProfile['approval_status'] === 'pending') {
+        $approvalPending = true;
+    } elseif ($lifelineProfile['approval_status'] === 'rejected') {
+        $approvalRejected = true;
+    }
+}
+
 // Fetch lifeline requests for this recipient
 $requests = [];
 if ($profileExists) {
@@ -249,6 +260,20 @@ if ($profileExists) {
 <?php include('assets/includes/header.php'); ?>
 
 <section class="lifeline-container">
+    <?php if (!empty($_SESSION['info'])): ?>
+        <div class="alert alert-info alert-dismissible fade show" role="alert">
+            <?= htmlspecialchars($_SESSION['info']) ?>
+            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+        </div>
+        <?php unset($_SESSION['info']); ?>
+    <?php endif; ?>
+    <?php if (!empty($_SESSION['error'])): ?>
+        <div class="alert alert-danger alert-dismissible fade show" role="alert">
+            <?= htmlspecialchars($_SESSION['error']) ?>
+            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+        </div>
+        <?php unset($_SESSION['error']); ?>
+    <?php endif; ?>
     <?php if (!$profileExists || $editMode): ?>
         <!-- Initial Profile Form -->
         <div class="profile-form-card">
@@ -582,7 +607,7 @@ if ($profileExists) {
                                     <span class="status-badge status-<?= $req['status']; ?> ms-2"><?= htmlspecialchars($req['status']); ?></span>
                                     <span class="urgency-badge urgency-<?= $req['urgency'] ?? 'normal'; ?> ms-2"><?= htmlspecialchars($req['urgency'] ?? 'normal'); ?></span>
                                 </div>
-                                <small class="text-muted"><?= date('M d, Y h:i A', strtotime($req['created_at'])); ?></small>
+                                <small class="text-muted"><?= format_display_date($req['created_at']); ?></small>
                             </div>
                             
                             <div class="row mt-3">
@@ -604,7 +629,7 @@ if ($profileExists) {
                                     <div class="flex-grow-1">
                                         <strong>Accepted by:</strong> <?= htmlspecialchars(trim(($req['donor_first'] ?? '') . ' ' . ($req['donor_last'] ?? ''))); ?>
                                         <br>
-                                        <small class="text-muted">Accepted on <?= date('M d, Y h:i A', strtotime($req['accepted_at'])); ?></small>
+                                        <small class="text-muted">Accepted on <?= format_display_date($req['accepted_at']); ?></small>
                                     </div>
                                     <a href="chat.php?id=<?= urlencode($req['accepted_donor_id']); ?>" class="btn btn-sm btn-primary">
                                         <i class="fas fa-comments me-1"></i>Chat

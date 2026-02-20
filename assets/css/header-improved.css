@@ -1,0 +1,235 @@
+/**
+ * Header Improvements - Clean, consistent layout
+ * Unified background, better alignment, improved menu & icons
+ */
+
+/* Keep original red background for logo area - logo needs red to be visible */
+/* header_bottom::before (red left 33%) is defined in style.css - do NOT override */
+.header_bottom {
+  box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+  overflow: visible;
+}
+.header_bottom .container-fluid,
+.header_bottom .row {
+  overflow: visible;
+}
+
+/* Prevent dropdown overlap - stacking and positioning */
+.header_bottom .main_menu li.dropdown {
+  position: relative;
+}
+.header_bottom .main_menu li.dropdown .dropdown-menu,
+.header_bottom .main_menu li.dropdown .dropdown-menu.show,
+.header_bottom .main_menu li.dropdown .dropdown-menu[data-popper-placement],
+.header_bottom .main_menu li.dropdown .dropdown-menu[style*="transform"] {
+  z-index: 1050 !important;
+  margin-top: 4px !important;
+  position: absolute !important;
+  left: 0 !important;
+  top: 100% !important;
+  transform: none !important;
+}
+.header_bottom .header_search_menu .dropdown-menu {
+  z-index: 1055 !important;
+}
+.header_bottom .notification-dropdown .dropdown-menu {
+  z-index: 1055 !important;
+}
+
+/* Logo area - center align within column (d-flex justify-content-center on col) */
+.header_bottom .header_logo a {
+  display: block;
+}
+.header_bottom .header_logo img {
+  max-height: 100px;
+  width: auto;
+  object-fit: contain;
+}
+
+/* Main menu - consistent horizontal layout */
+.header_bottom .main_menu {
+  display: flex !important;
+  align-items: center !important;
+  flex-wrap: wrap;
+  gap: 8px 12px !important;
+  margin-right: 0 !important;
+  padding-left: 24px !important;
+  list-style: none;
+  margin-bottom: 0 !important;
+}
+.header_bottom .main_menu > li {
+  margin: 0 !important;
+}
+.header_bottom .main_menu li a {
+  padding: 12px 0 !important;
+  text-decoration: none !important;
+  color: #333 !important;
+  font-weight: 500;
+  font-size: 15px;
+  transition: color 0.2s ease;
+  border-bottom: 2px solid transparent;
+}
+.header_bottom .main_menu li a:hover {
+  color: #EA062B !important;
+  border-bottom-color: #EA062B;
+}
+.header_bottom .main_menu li a i {
+  margin-right: 6px;
+  opacity: 0.85;
+}
+.header_bottom .main_menu li.dropdown .dropdown-toggle::after {
+  margin-left: 4px;
+  font-size: 10px;
+  vertical-align: middle;
+}
+
+/* Right section - icons & profile */
+.header_bottom .header_search_menu {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: flex-end !important;
+  gap: 4px 16px !important;
+  flex-wrap: nowrap;
+}
+.header_bottom .header_search_menu .dropdown_search {
+  margin: 0 !important;
+}
+
+/* Profile / Sign-in icon button - consistent with other header icons */
+.header_bottom .header_search_menu .red-btn {
+  width: 40px;
+  height: 40px;
+  display: inline-flex !important;
+  align-items: center;
+  justify-content: center;
+  padding: 0 !important;
+  border-radius: 8px;
+  font-weight: 500;
+  text-decoration: none !important;
+  transition: all 0.2s ease;
+  color: #555 !important;
+  min-width: 40px;
+}
+.header_bottom .header_search_menu .red-btn:hover {
+  background: #f5f5f5 !important;
+  color: #EA062B !important;
+}
+
+/* Notification button */
+.header_bottom .notification-dropdown {
+  margin: 0 4px;
+}
+.header_bottom .notification-btn {
+  width: 40px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  color: #555;
+  transition: all 0.2s ease;
+}
+.header_bottom .notification-btn:hover {
+  background: #f5f5f5;
+  color: #EA062B;
+}
+.header_bottom .notification-badge {
+  top: 4px !important;
+  right: 4px !important;
+  font-size: 10px !important;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  display: flex !important;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Search button */
+.header_bottom .search-btn {
+  width: 40px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  color: #555;
+  transition: all 0.2s ease;
+}
+.header_bottom .search-btn:hover {
+  background: #f5f5f5;
+  color: #EA062B;
+}
+.header_bottom .dropdown_search .dropdown-menu {
+  padding: 12px !important;
+  border-radius: 8px;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.12);
+  border: 1px solid rgba(0,0,0,0.06);
+}
+.header_bottom .search-form .theme-input {
+  padding: 10px 14px;
+  border-radius: 6px;
+  border: 1px solid #ddd;
+}
+.header_bottom .search-form .submit-btn {
+  padding: 10px 16px;
+  border-radius: 6px;
+  background: #EA062B;
+  color: #fff;
+  border: none;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+/* Hamburger / offcanvas button */
+.header_bottom .header_toggle_btn,
+.header_bottom .offcanvas_btn {
+  width: 40px;
+  height: 40px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  border-radius: 8px;
+  transition: background 0.2s ease;
+}
+.header_bottom .header_toggle_btn:hover,
+.header_bottom .offcanvas_btn:hover {
+  background: #f5f5f5 !important;
+}
+.header_bottom .header_toggle_btn span,
+.header_bottom .offcanvas_btn span {
+  display: block;
+  width: 22px;
+  height: 2px;
+  background: #333;
+  border-radius: 1px;
+}
+
+/* Profile switcher - align with other header elements */
+.header_bottom .profile-switcher-dropdown {
+  margin: 0 4px;
+}
+.header_bottom .profile-switcher-btn,
+.header_bottom .profile-badge {
+  height: 40px !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  padding: 8px 16px !important;
+}
+
+/* Row alignment - ensure everything is vertically centered */
+.header_bottom .row {
+  min-height: 70px;
+}
+.header_bottom .row.align-items-center {
+  align-items: center !important;
+}
+
+/* Mobile menu bar - consistent icon sizing */
+.header_bottom .d-flex.gap-2 .notification-btn,
+.header_bottom .d-flex.gap-2 .search-btn {
+  width: 40px;
+  height: 40px;
+}

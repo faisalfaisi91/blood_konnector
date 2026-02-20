@@ -199,9 +199,11 @@
             overflow: hidden;
             box-shadow: var(--shadow-medium);
             height: 85vh;
+            min-height: 500px;
             display: flex;
             flex-direction: column;
             background: white;
+            position: relative;
         }
 
         .chat-header {
@@ -213,6 +215,7 @@
             color: var(--text-primary);
             border-bottom: 1px solid var(--border-light);
             box-shadow: 0 2px 4px rgba(0, 0, 0, 0.04);
+            flex-shrink: 0;
         }
 
         .chat-header img {
@@ -340,6 +343,7 @@
             padding: 1.25rem;
             background: #fff;
             border-top: 1px solid var(--border-light);
+            flex-shrink: 0;
         }
 
         .input-group {
@@ -650,8 +654,8 @@
     
     <div class="chat-container">
         <div class="chat-header">
-            <a href="donor-inbox" class="back-button me-2 d-md-none">
-                <i class="fas fa-arrow-left"></i>
+            <a href="<?= $current_user_role === 'recipient' ? 'recipient-inbox' : 'donor-inbox' ?>" class="back-button me-2" title="Back to Chat List" style="text-decoration:none;color:inherit;font-size:1.2rem;">
+                <i class="fas fa-arrow-left"></i> Chat List
             </a>
             <img src="<?= htmlspecialchars($profile_pic) ?>" alt="User Avatar">
             <div class="user-info">
@@ -662,11 +666,55 @@
                 </div>
             </div>
             <div class="header-actions">
+                <button class="btn btn-sm btn-primary me-1" id="schedulingDonationBtn" title="Schedule donation after approval">
+                    <i class="fas fa-calendar-check me-1"></i> Scheduling Donation
+                </button>
                 <?php if ($current_user_role === 'recipient'): ?>
                     <button class="btn btn-sm btn-danger" id="emergencyQuick">
                         <i class="fas fa-hand-holding-heart me-1"></i> Emergency Request
                     </button>
                 <?php endif; ?>
+            </div>
+        </div>
+
+        <!-- Scheduling Donation Modal -->
+        <div class="modal fade" id="schedulingDonationModal" tabindex="-1" role="dialog">
+            <div class="modal-dialog modal-lg" role="document">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h5 class="modal-title"><i class="fas fa-calendar-check"></i> Scheduling Donation</h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                    </div>
+                    <div class="modal-body">
+                        <form id="schedulingDonationForm">
+                            <input type="hidden" name="recipient_id" value="<?= $current_user_role === 'recipient' ? htmlspecialchars($userId) : htmlspecialchars($other_user_id) ?>">
+                            <input type="hidden" name="donor_id" value="<?= $current_user_role === 'donor' ? htmlspecialchars($userId) : htmlspecialchars($other_user_id) ?>">
+                            <input type="hidden" name="other_user_id" value="<?= htmlspecialchars($other_user_id) ?>">
+                            <div class="mb-3">
+                                <label>Donation Date *</label>
+                                <input type="date" name="donation_date" class="form-control" required min="<?= date('Y-m-d') ?>">
+                            </div>
+                            <div class="mb-3">
+                                <label>Donation Time *</label>
+                                <input type="time" name="donation_time" class="form-control" required>
+                            </div>
+                            <div class="mb-3">
+                                <label>Location / Hospital *</label>
+                                <input type="text" name="location" class="form-control" placeholder="Hospital or donation center address" required>
+                            </div>
+                            <div class="mb-3">
+                                <label>Additional Details</label>
+                                <textarea name="notes" class="form-control" rows="3" placeholder="Any special instructions"></textarea>
+                            </div>
+                        </form>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                        <button type="button" class="btn btn-primary" id="submitSchedulingBtn">
+                            <i class="fas fa-paper-plane"></i> Submit & Notify Donor
+                        </button>
+                    </div>
+                </div>
             </div>
         </div>
 
@@ -687,7 +735,7 @@
                             <div class="message-bubble">
                                 <p class="mb-0"><?= htmlspecialchars($message['message']) ?></p>
                                 <div class="timestamp">
-                                    <?= date('h:i A', strtotime($message['timestamp'])) ?>
+                                    <?= format_display_date($message['timestamp']) ?>
                                 </div>
                             </div>
                             <?php if ($message['sender_id'] === $userId): ?>
@@ -830,6 +878,24 @@
                                 scrollToBottom();
                             }
                             
+                            // Notification: play sound and show popup when new message arrives (tab in background)
+                            if (hasNewMessages && document.hidden) {
+                                try {
+                                    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+                                    const osc = ctx.createOscillator();
+                                    const gain = ctx.createGain();
+                                    osc.connect(gain);
+                                    gain.connect(ctx.destination);
+                                    osc.frequency.value = 880;
+                                    gain.gain.value = 0.2;
+                                    osc.start();
+                                    setTimeout(function() { osc.stop(); }, 120);
+                                } catch (e) {}
+                                if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
+                                    new Notification('New message', { body: 'You have a new message', icon: 'assets/images/default-avatar.png' });
+                                }
+                            }
+                            
                             // Re-attach suggestion click events
                             attachSuggestionEvents();
                         } else {
@@ -969,6 +1035,48 @@
         
         // Start polling
         startPolling();
+
+        // Scheduling Donation modal
+        const schedulingBtn = document.getElementById('schedulingDonationBtn');
+        const schedulingModal = document.getElementById('schedulingDonationModal');
+        const submitSchedulingBtn = document.getElementById('submitSchedulingBtn');
+        const schedulingForm = document.getElementById('schedulingDonationForm');
+        if (schedulingBtn && schedulingModal) {
+            schedulingBtn.addEventListener('click', function() {
+                const modal = new bootstrap.Modal(schedulingModal);
+                modal.show();
+            });
+        }
+        if (submitSchedulingBtn && schedulingForm) {
+            submitSchedulingBtn.addEventListener('click', async function() {
+                const fd = new FormData(schedulingForm);
+                fd.append('action', 'schedule_donation');
+                const date = schedulingForm.querySelector('[name="donation_date"]').value;
+                const time = schedulingForm.querySelector('[name="donation_time"]').value;
+                const loc = schedulingForm.querySelector('[name="location"]').value;
+                if (!date || !time || !loc) {
+                    alert('Please fill in date, time, and location.');
+                    return;
+                }
+                submitSchedulingBtn.disabled = true;
+                submitSchedulingBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Submitting...';
+                try {
+                    const res = await fetch('assets/lib/scheduling-api.php', { method: 'POST', body: fd });
+                    const json = await res.json();
+                    if (json.success) {
+                        bootstrap.Modal.getInstance(schedulingModal).hide();
+                        alert(json.message || 'Scheduling submitted. Donor will be notified to confirm.');
+                        schedulingForm.reset();
+                    } else {
+                        alert(json.error || 'Failed to submit');
+                    }
+                } catch (e) {
+                    alert('Error: ' + e.message);
+                }
+                submitSchedulingBtn.disabled = false;
+                submitSchedulingBtn.innerHTML = '<i class="fas fa-paper-plane"></i> Submit & Notify Donor';
+            });
+        }
 
         // Quick emergency request hook (recipient side) - Automated
         const emergencyBtn = document.getElementById('emergencyQuick');

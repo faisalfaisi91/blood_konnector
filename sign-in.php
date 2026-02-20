@@ -121,13 +121,22 @@ if (isset($_POST['btnSignIn'])) {
                         debug_log("last_activity updated for user: " . $user['user_id']);
                         debug_log("About to redirect user to profile page");
                         
+                        // Check for return URL (from Request Blood links on home page)
+                        $returnUrl = 'profile';
+                        $allowedReturns = ['emergency-recipient', 'lifeline-panel', 'profile'];
+                        if (!empty($_POST['return_url']) && in_array($_POST['return_url'], $allowedReturns)) {
+                            $returnUrl = $_POST['return_url'];
+                        } elseif (!empty($_GET['return']) && in_array($_GET['return'], $allowedReturns)) {
+                            $returnUrl = $_GET['return'];
+                        }
+                        
                         // Force session write again before redirect
                         session_write_close();
                         debug_log("Second session_write_close() called before redirect");
                         
                         // Use server-side redirect instead of JavaScript
                         // This ensures session is properly maintained
-                        header("Location: profile");
+                        header("Location: " . $returnUrl);
                         debug_log("Server-side redirect header sent");
                         exit();
                     } else {
@@ -332,6 +341,9 @@ if (isset($_POST['btnSignIn'])) {
                         <p class="mb-3">Please enter your email and password to sign in to your account.</p>
 
                         <form method="post" action="sign-in" class="km__main__form">
+                            <?php if (!empty($_GET['return']) && in_array($_GET['return'], ['emergency-recipient', 'lifeline-panel', 'profile'])): ?>
+                            <input type="hidden" name="return_url" value="<?= htmlspecialchars($_GET['return']) ?>">
+                            <?php endif; ?>
                             <div class="row mt-3">
                                 <div class="col-sm">
                                     <input type="email" name="email" placeholder="Email" required class="form-control">

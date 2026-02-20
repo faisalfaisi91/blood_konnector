@@ -36,17 +36,17 @@
       </div>
     </div>
     <div class="header_bottom">
-      <div class="container">
+      <div class="container-fluid">
         <div class="row align-items-center position-relative">
-          <div class="col-xl-2 col-lg-2 col-md-4 col-6">
+          <div class="col-xl-4 col-lg-2 col-md-4 col-6 d-flex justify-content-center">
             <div class="header_logo">
                 <a href="/">
                     <img src="assets/images/logo.png" alt="Blood Konnector Logo" class="img-fluid">
                 </a>
             </div>
           </div>
-          <div class="col-xl-7 col-lg-7 d-none d-xxl-block d-xl-block">
-            <ul class="main_menu" style="margin-right: 30px;">
+          <div class="col-xl-5 col-lg-7 d-none d-xxl-block d-xl-block">
+            <ul class="main_menu">
               <li class="position-relative">
                 <a href="about">About Us</a>
               </li>

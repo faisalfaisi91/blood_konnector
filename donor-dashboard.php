@@ -34,9 +34,74 @@ $stmt->bind_param("s", $donor_id);
 $stmt->execute();
 $unread_count = $stmt->get_result()->fetch_assoc()['unread'];
 
-// Donor status indicator
+// Profile display name (full_name or first_name + last_name)
+$display_name = trim($donor['full_name'] ?? '') ?: trim(($donor['first_name'] ?? '') . ' ' . ($donor['last_name'] ?? '')) ?: 'Donor';
+$contact_display = $donor['contact_number'] ?? $donor['phone_number'] ?? 'Not provided';
+$location_display = $donor['location'] ?? $donor['city'] ?? 'Not specified';
+
+// Active logic: donor is INACTIVE if donated within 4 months
+$last_donation = !empty($donor['last_donation_date']) ? strtotime($donor['last_donation_date']) : null;
+$four_months_ago = strtotime('-4 months');
+$is_active_for_donation = ($last_donation === null || $last_donation <= $four_months_ago);
+$status_label = $is_active_for_donation ? 'Active' : 'Inactive (donated within 4 months)';
+
+// Next donation date (4 months from last donation)
+$next_donation_date = null;
+if ($last_donation) {
+    $next_donation_date = strtotime('+4 months', $last_donation);
+}
+
+// Total donations count (from blood_donations if table exists)
 $total_donations = 0;
-$recent_donations = null;
+$donation_history = [];
+$check_table = @$conn->query("SHOW TABLES LIKE 'blood_donations'");
+if ($check_table && $check_table->num_rows > 0) {
+    $count_stmt = $conn->prepare("SELECT COUNT(*) AS cnt FROM blood_donations WHERE donor_id = ? AND status = 'completed'");
+    if ($count_stmt) {
+        $count_stmt->bind_param("s", $donor_id);
+        $count_stmt->execute();
+        $row = $count_stmt->get_result()->fetch_assoc();
+        $total_donations = (int)($row['cnt'] ?? 0);
+        $count_stmt->close();
+    }
+    $hist_stmt = $conn->prepare("SELECT * FROM blood_donations WHERE donor_id = ? ORDER BY donation_date DESC, created_at DESC LIMIT 10");
+    if ($hist_stmt) {
+        $hist_stmt->bind_param("s", $donor_id);
+        $hist_stmt->execute();
+        $hist_res = $hist_stmt->get_result();
+        while ($r = $hist_res->fetch_assoc()) $donation_history[] = $r;
+        $hist_stmt->close();
+    }
+}
+
+// Donor availability toggle (is_available: 1=visible, 0=deactivated)
+$is_available = isset($donor['is_available']) ? (int)$donor['is_available'] : 1;
+$emergency_avail = ($donor['emergency_availability'] ?? $donor['emergency_contact'] ?? 'no') === 'yes';
+
+// Pending donor confirmations (scheduled donations awaiting donor to confirm date)
+$pending_confirmations = [];
+$completion_asks = [];
+$chk = @$conn->query("SHOW TABLES LIKE 'blood_donations'");
+if ($chk && $chk->num_rows > 0) {
+    $colChk = @$conn->query("SHOW COLUMNS FROM blood_donations LIKE 'donor_confirmed'");
+    if ($colChk && $colChk->num_rows > 0) {
+        $q = $conn->prepare("SELECT bd.*, u.first_name AS recipient_first, u.last_name AS recipient_last FROM blood_donations bd JOIN users u ON u.user_id = bd.recipient_id WHERE bd.donor_id = ? AND bd.status = 'scheduled' AND COALESCE(bd.donor_confirmed, 0) = 0");
+        $q->bind_param("s", $donor_id);
+        $q->execute();
+        $res = $q->get_result();
+        while ($r = $res->fetch_assoc()) $pending_confirmations[] = $r;
+        $q->close();
+    }
+    $colChk2 = @$conn->query("SHOW COLUMNS FROM blood_donations LIKE 'completion_asked_at'");
+    if ($colChk2 && $colChk2->num_rows > 0) {
+        $q2 = $conn->prepare("SELECT bd.*, u.first_name AS recipient_first, u.last_name AS recipient_last FROM blood_donations bd JOIN users u ON u.user_id = bd.recipient_id WHERE bd.donor_id = ? AND bd.status = 'scheduled' AND bd.completion_asked_at IS NOT NULL");
+        $q2->bind_param("s", $donor_id);
+        $q2->execute();
+        $res2 = $q2->get_result();
+        while ($r = $res2->fetch_assoc()) $completion_asks[] = $r;
+        $q2->close();
+    }
+}
 
 // Get blood type
 $blood_type = $donor['blood_type'] ?? 'Not specified';
@@ -483,6 +548,46 @@ if (!empty($blood_type) && $blood_type !== 'Not specified') {
             opacity: 0.5;
         }
 
+        .toggle-switch {
+            position: relative;
+            display: inline-block;
+            width: 52px;
+            height: 28px;
+        }
+        .toggle-switch input {
+            opacity: 0;
+            width: 0;
+            height: 0;
+        }
+        .toggle-slider {
+            position: absolute;
+            cursor: pointer;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: #ccc;
+            transition: 0.3s;
+            border-radius: 28px;
+        }
+        .toggle-slider:before {
+            position: absolute;
+            content: "";
+            height: 20px;
+            width: 20px;
+            left: 4px;
+            bottom: 4px;
+            background-color: white;
+            transition: 0.3s;
+            border-radius: 50%;
+        }
+        .toggle-switch input:checked + .toggle-slider {
+            background-color: var(--success);
+        }
+        .toggle-switch input:checked + .toggle-slider:before {
+            transform: translateX(24px);
+        }
+
         @media (max-width: 768px) {
             .dashboard-grid {
                 grid-template-columns: 1fr;
@@ -521,11 +626,11 @@ if (!empty($blood_type) && $blood_type !== 'Not specified') {
 
             <!-- Statistics Cards -->
             <div class="dashboard-grid">
-                <div class="stat-card">
+                <div class="stat-card <?= $is_active_for_donation ? 'success' : 'warning' ?>">
                     <div class="stat-card-icon">
                         <i class="fas fa-calendar-check"></i>
                     </div>
-                    <div class="stat-number">Active</div>
+                    <div class="stat-number" style="font-size: 1.1rem;"><?= htmlspecialchars($status_label) ?></div>
                     <div class="stat-label">Donor Status</div>
                 </div>
 
@@ -533,8 +638,16 @@ if (!empty($blood_type) && $blood_type !== 'Not specified') {
                     <div class="stat-card-icon">
                         <i class="fas fa-check-circle"></i>
                     </div>
-                    <div class="stat-number"><?= $blood_type ?></div>
+                    <div class="stat-number"><?= htmlspecialchars($blood_type) ?></div>
                     <div class="stat-label">Blood Type</div>
+                </div>
+
+                <div class="stat-card">
+                    <div class="stat-card-icon">
+                        <i class="fas fa-tint"></i>
+                    </div>
+                    <div class="stat-number"><?= $total_donations ?></div>
+                    <div class="stat-label">Total Donations</div>
                 </div>
 
                 <div class="stat-card warning">
@@ -572,6 +685,57 @@ if (!empty($blood_type) && $blood_type !== 'Not specified') {
                 </div>
             <?php endif; ?>
 
+            <!-- Pending Donor Confirmations (Schedule Date) -->
+            <?php if (count($pending_confirmations) > 0): ?>
+            <div class="card" style="margin-bottom: 2rem; border-left: 4px solid var(--warning);">
+                <h2 class="section-title"><i class="fas fa-calendar-check"></i> Pending Confirmation</h2>
+                <p style="color: var(--text-light); margin-bottom: 1rem;">Please confirm the donation date below.</p>
+                <?php foreach ($pending_confirmations as $pc): ?>
+                <div class="donation-item" style="padding: 1rem; background: #fff9e6; border-radius: 8px; margin-bottom: 1rem;">
+                    <div class="donation-info">
+                        <strong><?= htmlspecialchars($pc['recipient_first'] . ' ' . $pc['recipient_last']) ?></strong>
+                        <div><?= htmlspecialchars($pc['donation_date'] ?? '') ?> <?= htmlspecialchars($pc['donation_time'] ?? '') ?></div>
+                        <div><?= htmlspecialchars($pc['location'] ?? '') ?></div>
+                    </div>
+                    <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
+                        <button type="button" class="btn btn-success btn-sm confirm-scheduling-btn" data-id="<?= (int)$pc['id'] ?>">Confirm</button>
+                        <button type="button" class="btn btn-secondary btn-sm decline-scheduling-btn" data-id="<?= (int)$pc['id'] ?>">Decline</button>
+                    </div>
+                </div>
+                <?php endforeach; ?>
+            </div>
+            <?php endif; ?>
+
+            <!-- Completion Confirmation (Yes/No/Reschedule with Remarks) -->
+            <?php if (count($completion_asks) > 0): ?>
+            <div class="card" style="margin-bottom: 2rem; border-left: 4px solid var(--primary);">
+                <h2 class="section-title"><i class="fas fa-question-circle"></i> Was the donation completed?</h2>
+                <?php foreach ($completion_asks as $ca): ?>
+                <div class="donation-item" style="padding: 1rem; background: #f0f9ff; border-radius: 8px; margin-bottom: 1rem;">
+                    <div class="donation-info">
+                        <strong><?= htmlspecialchars($ca['recipient_first'] . ' ' . $ca['recipient_last']) ?></strong>
+                        <div><?= htmlspecialchars(format_display_date(($ca['donation_date'] ?? '') . ' ' . ($ca['donation_time'] ?? '00:00'))) ?> - <?= htmlspecialchars($ca['location'] ?? '') ?></div>
+                    </div>
+                    <div class="completion-response" data-id="<?= (int)$ca['id'] ?>">
+                        <div style="display: flex; gap: 0.5rem; flex-wrap: wrap; margin-bottom: 0.5rem;">
+                            <button type="button" class="btn btn-success btn-sm completion-yes">Yes</button>
+                            <button type="button" class="btn btn-danger btn-sm completion-no">No</button>
+                            <button type="button" class="btn btn-warning btn-sm completion-reschedule">Reschedule</button>
+                        </div>
+                        <div class="remarks-row" style="display: none;">
+                            <input type="text" class="form-control remarks-input" placeholder="Remarks (optional)" style="margin-bottom: 0.5rem;">
+                            <div class="reschedule-fields" style="display: none;">
+                                <input type="date" class="form-control new-date-input" style="margin-bottom: 0.25rem;">
+                                <input type="time" class="form-control new-time-input" style="margin-bottom: 0.5rem;">
+                            </div>
+                            <button type="button" class="btn btn-primary btn-sm submit-completion">Submit</button>
+                        </div>
+                    </div>
+                </div>
+                <?php endforeach; ?>
+            </div>
+            <?php endif; ?>
+
             <!-- Content Grid -->
             <div class="content-grid">
                 <!-- Profile Summary -->
@@ -580,15 +744,46 @@ if (!empty($blood_type) && $blood_type !== 'Not specified') {
                     
                     <div class="profile-summary">
                         <div class="profile-avatar">
-                            <?= strtoupper(substr($donor['first_name'] ?? 'D', 0, 1)) ?>
+                            <?= strtoupper(substr($display_name, 0, 1)) ?>
                         </div>
                         <div class="profile-info">
-                            <h3><?= htmlspecialchars($donor['first_name'] . ' ' . $donor['last_name']) ?></h3>
+                            <h3><?= htmlspecialchars($display_name) ?></h3>
                             <p><i class="fas fa-envelope"></i> <?= htmlspecialchars($donor['email']) ?></p>
-                            <p><i class="fas fa-phone"></i> <?= htmlspecialchars($donor['phone_number'] ?? 'Not provided') ?></p>
-                            <p><i class="fas fa-map-marker-alt"></i> <?= htmlspecialchars($donor['city'] ?? 'Not specified') ?></p>
+                            <p><i class="fas fa-phone"></i> <?= htmlspecialchars($contact_display) ?></p>
+                            <p><i class="fas fa-map-marker-alt"></i> <?= htmlspecialchars($location_display) ?></p>
                             <div class="blood-type-badge"><?= htmlspecialchars($blood_type) ?></div>
                         </div>
+                    </div>
+
+                    <?php if ($next_donation_date && $next_donation_date > time()): ?>
+                    <div class="countdown-box" style="background: #f0f9ff; padding: 1rem; border-radius: 8px; margin: 1rem 0; border-left: 4px solid var(--primary);">
+                        <strong><i class="fas fa-clock"></i> Next Donation:</strong> 
+                        <span id="donation-countdown"><?= format_display_date($next_donation_date, false) ?></span>
+                    </div>
+                    <?php endif; ?>
+
+                    <!-- Donor Availability Toggle -->
+                    <div class="toggle-row" style="display: flex; align-items: center; justify-content: space-between; padding: 1rem 0; border-top: 1px solid #e2e8f0; margin-top: 1rem;">
+                        <div>
+                            <strong>Profile Visibility</strong>
+                            <p style="margin: 0.25rem 0 0 0; font-size: 0.9rem; color: var(--text-light);">When off, your profile won't show in lists and you won't get requests</p>
+                        </div>
+                        <label class="toggle-switch">
+                            <input type="checkbox" id="availability-toggle" <?= $is_available ? 'checked' : '' ?>>
+                            <span class="toggle-slider"></span>
+                        </label>
+                    </div>
+
+                    <!-- Emergency Availability Toggle -->
+                    <div class="toggle-row" style="display: flex; align-items: center; justify-content: space-between; padding: 1rem 0; border-top: 1px solid #e2e8f0;">
+                        <div>
+                            <strong>Emergency Availability</strong>
+                            <p style="margin: 0.25rem 0 0 0; font-size: 0.9rem; color: var(--text-light);">Can donate within 6–8 hours for emergencies</p>
+                        </div>
+                        <label class="toggle-switch">
+                            <input type="checkbox" id="emergency-toggle" <?= $emergency_avail ? 'checked' : '' ?>>
+                            <span class="toggle-slider"></span>
+                        </label>
                     </div>
 
                     <div class="action-buttons">
@@ -628,7 +823,69 @@ if (!empty($blood_type) && $blood_type !== 'Not specified') {
                 </div>
             </div>
 
-            <!-- Additional Information Section -->
+            <!-- Blood Donation History -->
+            <div class="card">
+                <h2 class="section-title">Blood Donation History</h2>
+                <?php if (count($donation_history) > 0): ?>
+                <div class="recent-donations">
+                    <?php foreach ($donation_history as $dh): ?>
+                    <div class="donation-item">
+                        <div class="donation-info">
+                            <div class="donation-date"><?= htmlspecialchars(format_display_date($dh['donation_date'] ?? $dh['created_at'], false)) ?></div>
+                            <div class="donation-type"><?= htmlspecialchars($dh['status'] ?? 'completed') ?> &middot; <?= htmlspecialchars($dh['urgency'] ?? 'normal') ?></div>
+                        </div>
+                        <span class="badge badge-<?= ($dh['status'] ?? '') === 'completed' ? 'success' : 'warning' ?>"><?= htmlspecialchars($dh['status'] ?? 'completed') ?></span>
+                    </div>
+                    <?php endforeach; ?>
+                </div>
+                <a href="donation-requests-manager" class="btn-dashboard btn-secondary-dashboard" style="margin-top: 1rem;">View All Blood Donation Requests</a>
+                <?php else: ?>
+                <div class="no-data">
+                    <div class="no-data-icon"><i class="fas fa-tint"></i></div>
+                    <p>No donation history yet. Your completed donations will appear here.</p>
+                </div>
+                <?php endif; ?>
+            </div>
+
+            <!-- Health Reports (Optional Upload) -->
+            <div class="card">
+                <h2 class="section-title">Health Reports</h2>
+                <p style="color: var(--text-light); margin-bottom: 1rem;">Upload or replace your blood test and medical reports (optional).</p>
+                <a href="edit-donor-profile" class="btn-dashboard btn-primary-dashboard" style="width: 100%;">
+                    <i class="fas fa-upload"></i> Upload / Replace Reports
+                </a>
+            </div>
+
+            <!-- Donor Insights -->
+            <div class="card">
+                <h2 class="section-title">Donor Insights</h2>
+                <div style="display: grid; gap: 1rem;">
+                    <div style="padding: 1rem; background: #f8f9fa; border-radius: 8px; display: flex; align-items: center; gap: 1rem;">
+                        <div style="width: 48px; height: 48px; background: var(--primary-light); border-radius: 8px; display: flex; align-items: center; justify-content: center; color: var(--primary);"><i class="fas fa-heart"></i></div>
+                        <div>
+                            <strong>Lives Impacted</strong>
+                            <p style="margin: 0; color: var(--text-light); font-size: 0.9rem;"><?= $total_donations ?> donation(s) completed</p>
+                        </div>
+                    </div>
+                    <div style="padding: 1rem; background: #f8f9fa; border-radius: 8px; display: flex; align-items: center; gap: 1rem;">
+                        <div style="width: 48px; height: 48px; background: #d5f4e6; border-radius: 8px; display: flex; align-items: center; justify-content: center; color: var(--success);"><i class="fas fa-check-circle"></i></div>
+                        <div>
+                            <strong>Status</strong>
+                            <p style="margin: 0; color: var(--text-light); font-size: 0.9rem;"><?= $is_active_for_donation ? 'Eligible to donate' : 'Next eligible in ' . ($next_donation_date ? format_display_date($next_donation_date, false) : '') ?></p>
+                        </div>
+                    </div>
+                    <div style="padding: 1rem; background: #f8f9fa; border-radius: 8px; display: flex; align-items: center; gap: 1rem;">
+                        <div style="width: 48px; height: 48px; background: #fff3cd; border-radius: 8px; display: flex; align-items: center; justify-content: center; color: var(--warning);"><i class="fas fa-tint"></i></div>
+                        <div>
+                            <strong>Blood Donation Requests</strong>
+                            <p style="margin: 0; color: var(--text-light); font-size: 0.9rem;">View and manage your blood donation requests.</p>
+                            <a href="donation-requests-manager" class="btn-dashboard btn-secondary-dashboard" style="margin-top: 0.5rem; padding: 0.5rem 1rem; font-size: 0.9rem;">View Requests</a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Quick Links & Actions -->
             <div class="card">
                 <h2 class="section-title">Quick Links & Actions</h2>
                 
@@ -636,8 +893,8 @@ if (!empty($blood_type) && $blood_type !== 'Not specified') {
                     <a href="donor-profile" class="btn-dashboard btn-secondary-dashboard" style="padding: 1rem;">
                         <i class="fas fa-id-card"></i> View Full Profile
                     </a>
-                    <a href="donations" class="btn-dashboard btn-secondary-dashboard" style="padding: 1rem;">
-                        <i class="fas fa-history"></i> Donation History
+                    <a href="donation-requests-manager" class="btn-dashboard btn-secondary-dashboard" style="padding: 1rem;">
+                        <i class="fas fa-list"></i> Donation Requests
                     </a>
                     <a href="contact" class="btn-dashboard btn-secondary-dashboard" style="padding: 1rem;">
                         <i class="fas fa-headset"></i> Contact Support
@@ -655,6 +912,126 @@ if (!empty($blood_type) && $blood_type !== 'Not specified') {
     <?php include('assets/includes/link-js.php'); ?>
 
     <script>
+    // Donor availability toggle
+    document.getElementById('availability-toggle')?.addEventListener('change', async function() {
+        const checked = this.checked;
+        const fd = new FormData();
+        fd.append('action', 'toggle_availability');
+        fd.append('checked', checked ? 'true' : 'false');
+        try {
+            const res = await fetch('assets/lib/donor-dashboard-api.php', { method: 'POST', body: fd });
+            const json = await res.json();
+            if (!json.success) alert(json.error || 'Failed to update profile visibility');
+        } catch (e) { alert('Failed to update'); }
+    });
+
+    // Emergency availability toggle
+    document.getElementById('emergency-toggle')?.addEventListener('change', async function() {
+        const checked = this.checked;
+        const fd = new FormData();
+        fd.append('action', 'toggle_emergency');
+        fd.append('checked', checked ? 'true' : 'false');
+        try {
+            const res = await fetch('assets/lib/donor-dashboard-api.php', { method: 'POST', body: fd });
+            const json = await res.json();
+            if (!json.success) alert(json.error || 'Failed to update emergency availability');
+        } catch (e) { alert('Failed to update'); }
+    });
+
+    // Next donation countdown (if element exists)
+    <?php if ($next_donation_date && $next_donation_date > time()): ?>
+    (function() {
+        const target = <?= $next_donation_date ?> * 1000;
+        function update() {
+            const now = Date.now();
+            if (now >= target) {
+                document.getElementById('donation-countdown').textContent = 'Eligible now';
+                return;
+            }
+            const d = Math.floor((target - now) / 86400000);
+            const h = Math.floor(((target - now) % 86400000) / 3600000);
+            document.getElementById('donation-countdown').textContent = d + ' days, ' + h + ' hours';
+        }
+        update();
+        setInterval(update, 3600000);
+    })();
+    <?php endif; ?>
+
+    // Pending confirmation: Confirm/Decline scheduling
+    document.querySelectorAll('.confirm-scheduling-btn').forEach(btn => {
+        btn.addEventListener('click', async function() {
+            const id = this.dataset.id;
+            const fd = new FormData();
+            fd.append('action', 'confirm_donor');
+            fd.append('blood_donation_id', id);
+            fd.append('confirmed', '1');
+            btn.disabled = true;
+            try {
+                const res = await fetch('assets/lib/scheduling-api.php', { method: 'POST', body: fd });
+                const json = await res.json();
+                if (json.success) location.reload();
+                else alert(json.error || 'Failed');
+            } catch (e) { alert('Error'); btn.disabled = false; }
+        });
+    });
+    document.querySelectorAll('.decline-scheduling-btn').forEach(btn => {
+        btn.addEventListener('click', async function() {
+            const id = this.dataset.id;
+            const fd = new FormData();
+            fd.append('action', 'confirm_donor');
+            fd.append('blood_donation_id', id);
+            fd.append('confirmed', '0');
+            btn.disabled = true;
+            try {
+                const res = await fetch('assets/lib/scheduling-api.php', { method: 'POST', body: fd });
+                const json = await res.json();
+                if (json.success) location.reload();
+                else alert(json.error || 'Failed');
+            } catch (e) { alert('Error'); btn.disabled = false; }
+        });
+    });
+
+    // Completion response: Yes/No/Reschedule with remarks
+    document.querySelectorAll('.completion-response').forEach(block => {
+        const id = block.dataset.id;
+        const yesBtn = block.querySelector('.completion-yes');
+        const noBtn = block.querySelector('.completion-no');
+        const rescheduleBtn = block.querySelector('.completion-reschedule');
+        const remarksRow = block.querySelector('.remarks-row');
+        const remarksInput = block.querySelector('.remarks-input');
+        const rescheduleFields = block.querySelector('.reschedule-fields');
+        const submitBtn = block.querySelector('.submit-completion');
+        let chosenResponse = null;
+
+        function showRemarks(showReschedule = false) {
+            remarksRow.style.display = 'block';
+            rescheduleFields.style.display = showReschedule ? 'block' : 'none';
+        }
+
+        yesBtn?.addEventListener('click', () => { chosenResponse = 'yes'; showRemarks(false); });
+        noBtn?.addEventListener('click', () => { chosenResponse = 'no'; showRemarks(false); });
+        rescheduleBtn?.addEventListener('click', () => { chosenResponse = 'reschedule'; showRemarks(true); });
+
+        submitBtn?.addEventListener('click', async function() {
+            const fd = new FormData();
+            fd.append('action', 'completion_response');
+            fd.append('blood_donation_id', id);
+            fd.append('response', chosenResponse);
+            fd.append('remarks', remarksInput?.value || '');
+            if (chosenResponse === 'reschedule') {
+                fd.append('new_date', block.querySelector('.new-date-input')?.value || '');
+                fd.append('new_time', block.querySelector('.new-time-input')?.value || '');
+            }
+            submitBtn.disabled = true;
+            try {
+                const res = await fetch('assets/lib/scheduling-api.php', { method: 'POST', body: fd });
+                const json = await res.json();
+                if (json.success) location.reload();
+                else alert(json.error || 'Failed');
+            } catch (e) { alert('Error'); }
+        });
+    });
+
     // Handle donor response buttons
     document.querySelectorAll('.donor-response').forEach(btn => {
         btn.addEventListener('click', async () => {

@@ -326,7 +326,7 @@ $stmt->close();
                                     <?php endif; ?>
                                 <?php endif; ?>
                                 <small class="text-muted">
-                                    <i class="far fa-clock me-1"></i><?= date('M d, Y h:i A', strtotime($notif['created_at'])); ?>
+                                    <i class="far fa-clock me-1"></i><?= format_display_date($notif['created_at']); ?>
                                 </small>
                             </div>
                             <?php if (!$isRead): ?>
@@ -429,9 +429,9 @@ $stmt->close();
                                 <?php
                                     $statusClass = 'status-' . $req['status'];
                                 $cardStatusClass = $req['status'];
-                                    $when = htmlspecialchars($req['preferred_date'] . ' ' . $req['preferred_time']);
+                                    $when = htmlspecialchars(format_display_date($req['preferred_date'] . ' ' . $req['preferred_time']));
                                     $donorName = trim(($req['donor_first'] ?? '') . ' ' . ($req['donor_last'] ?? ''));
-                                $createdDate = date('M d, Y', strtotime($req['created_at']));
+                                $createdDate = format_display_date($req['created_at'], false);
                                 $urgencyClass = 'urgency-' . ($req['urgency'] ?? 'normal');
                             ?>
                             <div class="request-card card <?= $cardStatusClass; ?>" data-request-id="<?= (int)$req['id']; ?>" data-scheduled="<?= htmlspecialchars($req['scheduled_at'] ?? ''); ?>">

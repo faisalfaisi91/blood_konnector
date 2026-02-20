@@ -104,7 +104,7 @@ if ($profileManager->isLoggedIn()) {
                                     <div class="donor-info">
                                         <p><i class="fas fa-tint"></i> Blood Group: <strong class="bg-primary text-white py-1 px-2 rounded"><?= $donor['blood_type'] ?></strong></p>
                                         <p><i class="fas fa-map-marker-alt"></i> <?= htmlspecialchars($donor['location'] ?: 'N/A') ?></p>
-                                        <p><i class="fas fa-calendar-alt"></i> Last Donation: <?= $donor['last_donation_date'] ? date('F j, Y', strtotime($donor['last_donation_date'])) : 'Never' ?></p>
+                                        <p><i class="fas fa-calendar-alt"></i> Last Donation: <?= $donor['last_donation_date'] ? format_display_date($donor['last_donation_date'], false) : 'Never' ?></p>
                                     </div>
                                     <div class="donor-description">
                                         <p><strong>Health:</strong> <?= nl2br(htmlspecialchars($donor['health_status'] ?: 'N/A')) ?></p>

@@ -86,7 +86,7 @@
         echo '<div class="message-bubble">';
         echo '<p class="mb-0 ' . ($is_system ? 'text-muted' : 'text-black') . '">' . htmlspecialchars($message['message']) . '</p>';
         echo '<div class="timestamp">';
-        echo date('h:i A', strtotime($message['timestamp']));
+        echo format_display_date($message['timestamp']);
         echo '</div>';
         echo '</div>';
         
@@ -105,7 +105,7 @@
         echo '<img src="' . htmlspecialchars($system_user_pic) . '" class="user-avatar" alt="Blood Konnection Avatar">';
         echo '<div class="message-bubble">';
         echo '<p class="mb-0 text-muted">' . htmlspecialchars($recipient_name) . ' is currently offline. We will notify them to respond as soon as possible.</p>';
-        echo '<div class="timestamp">' . date('h:i A') . '</div>';
+        echo '<div class="timestamp">' . format_display_date(date('Y-m-d H:i:s')) . '</div>';
         echo '</div>';
         echo '</div>';
         echo '</div>';

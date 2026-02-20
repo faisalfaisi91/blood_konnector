@@ -141,7 +141,7 @@ $recent = $conn->query("\n    SELECT lr.id, lr.status, lr.preferred_date, lr.pre
     <title>Emergency Admin Dashboard</title>
     <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap" rel="stylesheet">
-    <?php include('assets/includes/link-js.php'); ?>
+    <?php include __DIR__ . '/../assets/includes/link-js.php'; ?>
 </head>
 <body class="bg-gray-100 min-h-screen">
     <div class="max-w-6xl mx-auto p-6">
@@ -151,6 +151,10 @@ $recent = $conn->query("\n    SELECT lr.id, lr.status, lr.preferred_date, lr.pre
                 <p class="text-sm text-gray-500">Super Admin: <?= htmlspecialchars($adminName) ?></p>
             </div>
             <div class="flex items-center space-x-2">
+                <a href="../donation-requests-manager" class="text-sm text-blue-600 hover:underline">Blood Donation Requests</a>
+                <span class="text-gray-400">|</span>
+                <a href="lifeline-dashboard.php" class="text-sm text-blue-600 hover:underline">LifeLine Dashboard</a>
+                <span class="text-gray-400">|</span>
                 <a href="superadmin-logout.php" class="text-sm text-red-600 hover:underline">Logout</a>
             </div>
         </div>
@@ -246,12 +250,13 @@ $recent = $conn->query("\n    SELECT lr.id, lr.status, lr.preferred_date, lr.pre
                                         <span class="px-2 py-1 rounded text-xs bg-gray-100"><?= htmlspecialchars($row['status']) ?></span>
                                     </td>
                                     <td class="px-4 py-2 text-gray-700">
-                                        <?= htmlspecialchars($row['preferred_date'] . ' ' . $row['preferred_time']) ?>
+                                        <?= htmlspecialchars(format_display_date($row['preferred_date'] . ' ' . $row['preferred_time'])) ?>
                                     </td>
                                     <td class="px-4 py-2 text-gray-700"><?= htmlspecialchars($row['urgency']) ?></td>
                                     <td class="px-4 py-2 text-gray-700"><?= htmlspecialchars($row['location']) ?></td>
                                     <td class="px-4 py-2 text-gray-700">
-                                        <form method="POST" class="flex items-center space-x-2">
+                                        <a href="../donation-request-detail?id=<?= (int)$row['id'] ?>" class="text-blue-600 text-sm hover:underline mr-2">View Details</a>
+                                        <form method="POST" class="inline-flex items-center space-x-2">
                                             <input type="hidden" name="assign_request" value="1">
                                             <input type="hidden" name="request_id" value="<?= (int)$row['id'] ?>">
                                             <input type="text" name="donor_id" placeholder="Donor user id" class="border rounded px-2 py-1 text-sm w-32" required>

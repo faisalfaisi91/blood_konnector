@@ -201,7 +201,7 @@ $conn->query("UPDATE users SET last_activity = NOW() WHERE user_id = '$donor_id'
                 <div class="detail-item">
                     <span class="text-gray-600">Last Donation</span>
                     <span class="font-medium text-gray-800">
-                        <?= date('F j, Y', strtotime($donor['last_donation_date'])) ?>
+                        <?= format_display_date($donor['last_donation_date'], false) ?>
                     </span>
                 </div>
                 

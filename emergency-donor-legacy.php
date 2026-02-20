@@ -278,7 +278,7 @@ $requests = array_merge($assignedRequests, $availableRequests);
                                     <?php endif; ?>
                                 <?php endif; ?>
                                 <small class="text-muted">
-                                    <i class="far fa-clock me-1"></i><?= date('M d, Y h:i A', strtotime($notif['created_at'])); ?>
+                                    <i class="far fa-clock me-1"></i><?= format_display_date($notif['created_at']); ?>
                                 </small>
                             </div>
                             <?php if (!$isRead): ?>
@@ -332,7 +332,7 @@ $requests = array_merge($assignedRequests, $availableRequests);
                     <?php foreach ($assignedRequests as $req): ?>
                         <?php
                             $statusClass = 'status-' . $req['status'];
-                            $when = htmlspecialchars($req['preferred_date'] . ' ' . $req['preferred_time']);
+                            $when = htmlspecialchars(format_display_date($req['preferred_date'] . ' ' . $req['preferred_time']));
                             $recipientName = trim($req['recipient_first'] . ' ' . $req['recipient_last']);
                             $payload = $req['reschedule_payload'] ? json_decode($req['reschedule_payload'], true) : null;
                             $requestBloodType = $req['blood_type'] ?? 'N/A';
@@ -381,7 +381,7 @@ $requests = array_merge($assignedRequests, $availableRequests);
                     <?php foreach ($availableRequests as $req): ?>
                         <?php
                             $statusClass = 'status-' . $req['status'];
-                            $when = htmlspecialchars($req['preferred_date'] . ' ' . $req['preferred_time']);
+                            $when = htmlspecialchars(format_display_date($req['preferred_date'] . ' ' . $req['preferred_time']));
                             $recipientName = trim($req['recipient_first'] . ' ' . $req['recipient_last']);
                             $payload = $req['reschedule_payload'] ? json_decode($req['reschedule_payload'], true) : null;
                             $isAssigned = !empty($req['donor_id']) && $req['donor_id'] === $userId;

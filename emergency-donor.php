@@ -114,6 +114,17 @@ if (!empty($donorBloodType)) {
 // Combine assigned and available requests (assigned first)
 $requests = array_merge($assignedRequests, $availableRequests);
 
+// Fetch request IDs where donor has already submitted feedback
+$feedbackGivenRequestIds = [];
+$fbStmt = $conn->prepare("SELECT request_id FROM emergency_feedback WHERE from_user_id = ? AND role = 'donor'");
+$fbStmt->bind_param("s", $userId);
+$fbStmt->execute();
+$fbRes = $fbStmt->get_result();
+while ($fbRow = $fbRes->fetch_assoc()) {
+    $feedbackGivenRequestIds[] = (int)$fbRow['request_id'];
+}
+$fbStmt->close();
+
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -204,7 +215,7 @@ $requests = array_merge($assignedRequests, $availableRequests);
                     <?php foreach ($assignedRequests as $req): ?>
                         <?php
                             $statusClass = 'status-' . $req['status'];
-                            $when = htmlspecialchars($req['preferred_date'] . ' ' . $req['preferred_time']);
+                            $when = htmlspecialchars(format_display_date($req['preferred_date'] . ' ' . $req['preferred_time']));
                             $recipientName = trim($req['recipient_first'] . ' ' . $req['recipient_last']);
                             $payload = $req['reschedule_payload'] ? json_decode($req['reschedule_payload'], true) : null;
                             $requestBloodType = $req['blood_type'] ?? 'N/A';
@@ -238,6 +249,12 @@ $requests = array_merge($assignedRequests, $availableRequests);
                                         <button class="btn btn-outline-danger donor-response" data-response="decline">Decline</button>
                                         <button class="btn btn-outline-primary donor-response" data-response="reschedule">Resched.</button>
                                     </div>
+                                <?php elseif (in_array($req['status'], ['completed','failed']) && !in_array((int)$req['id'], $feedbackGivenRequestIds)): ?>
+                                    <button class="btn btn-primary btn-sm open-feedback-modal" data-request-id="<?= (int)$req['id']; ?>" data-target-name="<?= htmlspecialchars(trim($req['recipient_first'] . ' ' . $req['recipient_last'])); ?>">
+                                        <i class="fas fa-star me-1"></i> Rate Recipient
+                                    </button>
+                                <?php elseif (in_array($req['status'], ['completed','failed']) && in_array((int)$req['id'], $feedbackGivenRequestIds)): ?>
+                                    <span class="text-success small"><i class="fas fa-check-circle me-1"></i>Feedback submitted</span>
                                 <?php else: ?>
                                     <span class="text-muted small">—</span>
                                 <?php endif; ?>
@@ -253,7 +270,7 @@ $requests = array_merge($assignedRequests, $availableRequests);
                     <?php foreach ($availableRequests as $req): ?>
                         <?php
                             $statusClass = 'status-' . $req['status'];
-                            $when = htmlspecialchars($req['preferred_date'] . ' ' . $req['preferred_time']);
+                            $when = htmlspecialchars(format_display_date($req['preferred_date'] . ' ' . $req['preferred_time']));
                             $recipientName = trim($req['recipient_first'] . ' ' . $req['recipient_last']);
                             $payload = $req['reschedule_payload'] ? json_decode($req['reschedule_payload'], true) : null;
                             $isAssigned = !empty($req['donor_id']) && $req['donor_id'] === $userId;
@@ -306,6 +323,48 @@ $requests = array_merge($assignedRequests, $availableRequests);
         </div>
     </div>
 </section>
+
+<!-- Feedback Modal -->
+<div class="modal fade" id="feedbackModal" tabindex="-1" aria-labelledby="feedbackModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="feedbackModalLabel"><i class="fas fa-star me-2"></i>Rate Recipient</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <p class="text-muted mb-3">How was your experience with <strong id="feedbackTargetName"></strong>? Your feedback helps improve our service.</p>
+                <form id="feedbackForm">
+                    <input type="hidden" id="feedbackRequestId" name="request_id">
+                    <input type="hidden" name="role" value="donor">
+                    <div class="mb-3">
+                        <label class="form-label">Rating (1-5 stars) <span class="text-danger">*</span></label>
+                        <div class="d-flex gap-1 align-items-center">
+                            <?php for ($i = 1; $i <= 5; $i++): ?>
+                                <label class="feedback-star m-0" title="<?= $i ?> star(s)">
+                                    <input type="radio" name="rating" value="<?= $i ?>" required>
+                                    <i class="fas fa-star text-warning" style="font-size: 1.8rem; cursor: pointer;"></i>
+                                </label>
+                            <?php endfor; ?>
+                            <span class="ms-2 small text-muted" id="ratingLabel">Select a rating</span>
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label" for="feedbackRemarks">Remarks (optional)</label>
+                        <textarea class="form-control" id="feedbackRemarks" name="remarks" rows="3" placeholder="e.g., Recipient coordination, hospital management, overall experience..."></textarea>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-primary" id="submitFeedbackBtn">
+                    <i class="fas fa-paper-plane me-1"></i>Submit Feedback
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
 <?php include('assets/includes/footer.php'); ?>
 <?php include('assets/includes/link-js.php'); ?>
 
@@ -460,6 +519,65 @@ function startCountdown() {
     });
 }
 startCountdown();
+
+// Feedback modal
+const feedbackModal = document.getElementById('feedbackModal');
+if (feedbackModal) {
+    const feedbackTargetNameEl = document.getElementById('feedbackTargetName');
+    const feedbackRequestIdEl = document.getElementById('feedbackRequestId');
+    const ratingLabel = document.getElementById('ratingLabel');
+    const submitFeedbackBtn = document.getElementById('submitFeedbackBtn');
+    
+    document.querySelectorAll('.open-feedback-modal').forEach(btn => {
+        btn.addEventListener('click', () => {
+            feedbackRequestIdEl.value = btn.dataset.requestId;
+            feedbackTargetNameEl.textContent = btn.dataset.targetName || 'Recipient';
+            document.getElementById('feedbackRemarks').value = '';
+            document.querySelectorAll('#feedbackForm input[name="rating"]').forEach(r => r.checked = false);
+            ratingLabel.textContent = 'Select a rating';
+            const modal = new bootstrap.Modal(feedbackModal);
+            modal.show();
+        });
+    });
+    
+    document.querySelectorAll('#feedbackForm .feedback-star').forEach((label, idx) => {
+        label.addEventListener('click', () => {
+            ratingLabel.textContent = (idx + 1) + ' star(s)';
+        });
+    });
+    
+    submitFeedbackBtn.addEventListener('click', async () => {
+        const rating = document.querySelector('#feedbackForm input[name="rating"]:checked');
+        if (!rating) {
+            alert('Please select a rating (1-5 stars).');
+            return;
+        }
+        submitFeedbackBtn.disabled = true;
+        submitFeedbackBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>Submitting...';
+        const formData = new FormData();
+        formData.append('action', 'feedback');
+        formData.append('request_id', feedbackRequestIdEl.value);
+        formData.append('role', 'donor');
+        formData.append('rating', rating.value);
+        formData.append('remarks', document.getElementById('feedbackRemarks').value);
+        try {
+            const res = await fetch('assets/lib/emergency-api.php', { method: 'POST', body: formData });
+            const json = await res.json();
+            if (json.success) {
+                bootstrap.Modal.getInstance(feedbackModal).hide();
+                location.reload();
+            } else {
+                alert(json.error || 'Failed to submit feedback.');
+                submitFeedbackBtn.disabled = false;
+                submitFeedbackBtn.innerHTML = '<i class="fas fa-paper-plane me-1"></i>Submit Feedback';
+            }
+        } catch (err) {
+            alert('Network error. Please try again.');
+            submitFeedbackBtn.disabled = false;
+            submitFeedbackBtn.innerHTML = '<i class="fas fa-paper-plane me-1"></i>Submit Feedback';
+        }
+    });
+}
 </script>
 </body>
 </html>

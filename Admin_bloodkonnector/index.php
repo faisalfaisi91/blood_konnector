@@ -420,7 +420,7 @@ if ($recipient_result = $conn->query($recipient_query)) {
                                     echo "<tr><td colspan='5' class='text-center py-8 text-gray-500'><i class='fas fa-info-circle mr-2'></i>No donation history found</td></tr>";
                                 } else {
                                     while ($row = $history->fetch_assoc()) {
-                                        $donationDate = date('M d, Y', strtotime($row['donation_date']));
+                                        $donationDate = format_display_date($row['donation_date'], false);
                                         echo "<tr>
                                             <td class='border-b'>{$row['history_id']}</td>
                                             <td class='border-b'>{$row['donor_id']}</td>

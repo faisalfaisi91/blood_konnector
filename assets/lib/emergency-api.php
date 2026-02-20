@@ -48,10 +48,12 @@ function emergencyAutoAssignDonor($conn, $recipientId, $bloodTypeOverride = null
     }
     
     // Prefer donors with same blood type and same city (case-insensitive partial match)
+    // Exclude donors with is_available = 0 (profile deactivated)
     $query = "
         SELECT user_id
         FROM donors
         WHERE blood_type = ?
+          AND COALESCE(is_available, 1) = 1
           AND (? = '' OR LOWER(location) LIKE LOWER(CONCAT('%', ?, '%')) OR LOWER(?) LIKE LOWER(CONCAT('%', location, '%')))
         ORDER BY (CASE WHEN last_donation_date IS NULL THEN 0 ELSE 1 END), last_donation_date ASC
         LIMIT 1
@@ -67,8 +69,8 @@ function emergencyAutoAssignDonor($conn, $recipientId, $bloodTypeOverride = null
     }
     $stmt->close();
     
-    // Fallback: any donor with same blood type
-    $fallback = $conn->prepare("SELECT user_id FROM donors WHERE blood_type = ? ORDER BY (CASE WHEN last_donation_date IS NULL THEN 0 ELSE 1 END), last_donation_date ASC LIMIT 1");
+    // Fallback: any donor with same blood type (exclude deactivated)
+    $fallback = $conn->prepare("SELECT user_id FROM donors WHERE blood_type = ? AND COALESCE(is_available, 1) = 1 ORDER BY (CASE WHEN last_donation_date IS NULL THEN 0 ELSE 1 END), last_donation_date ASC LIMIT 1");
     $fallback->bind_param("s", $blood);
     $fallback->execute();
     $res2 = $fallback->get_result();
@@ -155,6 +157,7 @@ function emergencyNotifyMatchingDonors($conn, $requestId, $recipientId, $bloodTy
         INNER JOIN users u ON d.user_id = u.user_id
         WHERE d.blood_type = ?
           AND d.user_id != ?
+          AND COALESCE(d.is_available, 1) = 1
           AND d.user_id NOT IN (SELECT donor_id FROM emergency_confirmations WHERE request_id = ? AND donor_id IS NOT NULL)
         ORDER BY 
             CASE WHEN ? != '' AND (LOWER(d.location) LIKE LOWER(CONCAT('%', ?, '%')) OR LOWER(?) LIKE LOWER(CONCAT('%', d.location, '%'))) THEN 1 ELSE 2 END,

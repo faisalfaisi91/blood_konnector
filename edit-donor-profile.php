@@ -64,8 +64,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $about = filter_input(INPUT_POST, 'about', FILTER_SANITIZE_STRING);
 
     // Validate required fields
-    if (empty($full_name) || empty($email) || empty($contact_number) || empty($cnic) || empty($blood_type) || empty($gender) || empty($age)) {
-        $error = "Please fill in all required fields.";
+    // Make father_name, emergency_contacts, occupation optional for backwards compatibility
+    if (empty(trim($full_name ?? '')) || empty($email) || empty($contact_number) || empty($cnic) || empty($blood_type) || empty($gender) || empty($age)) {
+        $error = "Please fill in all required fields (Full Name, Email, Contact, CNIC, Blood Type, Gender, Age).";
     } elseif (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
         $error = "Invalid email format.";
     } elseif (!in_array($gender, ['male', 'female', 'custom'])) {
@@ -156,6 +157,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $has_new_columns = $check_columns && $check_columns->num_rows > 0;
             
             if ($has_new_columns) {
+                // Derive first_name/last_name from full_name when empty
+                if (empty(trim($first_name ?? '')) && !empty(trim($full_name ?? ''))) {
+                    $name_parts = explode(' ', trim($full_name), 2);
+                    $first_name = $name_parts[0] ?? '';
+                    $last_name = $name_parts[1] ?? '';
+                }
                 $update_query = "UPDATE donors SET 
                     full_name = ?, first_name = ?, last_name = ?, father_name = ?, age = ?, gender = ?, email = ?, 
                     contact_number = ?, whatsapp_number = ?, emergency_contacts = ?, cnic = ?, occupation = ?, 
@@ -207,10 +214,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
         
             if ($stmt->execute()) {
+                // Derive first_name/last_name for users table if empty
+                $u_first = trim($first_name ?? '');
+                $u_last = trim($last_name ?? '');
+                if (empty($u_first) && !empty(trim($full_name ?? ''))) {
+                    $np = explode(' ', trim($full_name), 2);
+                    $u_first = $np[0] ?? '';
+                    $u_last = $np[1] ?? '';
+                }
                 // Update users table for first_name, last_name, email, and profile_pic
                 $update_users_query = "UPDATE users SET first_name = ?, last_name = ?, email = ?, profile_pic = ? WHERE user_id = ?";
                 $users_stmt = $conn->prepare($update_users_query);
-                $users_stmt->bind_param("sssss", $first_name, $last_name, $email, $profile_pic, $userId);
+                $users_stmt->bind_param("sssss", $u_first, $u_last, $email, $profile_pic, $userId);
                 $users_stmt->execute();
                 $users_stmt->close();
         
@@ -400,8 +415,8 @@ if (isset($_GET['updated']) && $_GET['updated'] == '1' && isset($_SESSION['succe
                                 <input type="text" name="whatsapp_number" id="whatsapp_number" value="<?php echo htmlspecialchars($donor['whatsapp_number']); ?>" required>
                             </div>
                             <div class="form-group">
-                                <label for="emergency_contacts">Emergency Contacts *</label>
-                                <input type="text" name="emergency_contacts" id="emergency_contacts" value="<?php echo htmlspecialchars($donor['emergency_contacts'] ?? ''); ?>" placeholder="Enter emergency contact numbers" required>
+                                <label for="emergency_contacts">Emergency Contacts</label>
+                                <input type="text" name="emergency_contacts" id="emergency_contacts" value="<?php echo htmlspecialchars($donor['emergency_contacts'] ?? ''); ?>" placeholder="Enter emergency contact numbers">
                             </div>
                             <div class="form-group">
                                 <label for="cnic">CNIC *</label>
@@ -493,8 +508,8 @@ if (isset($_GET['updated']) && $_GET['updated'] == '1' && isset($_SESSION['succe
                                 <input type="date" name="last_donation_date" id="last_donation_date" value="<?php echo htmlspecialchars($donor['last_donation_date']); ?>">
                             </div>
                             <div class="form-group">
-                                <label for="availability">Availability</label>
-                                <textarea name="availability" id="availability"><?php echo htmlspecialchars($donor['availability']); ?></textarea>
+                                <label for="availability">Availability Notes</label>
+                                <textarea name="availability" id="availability"><?php echo htmlspecialchars($donor['availability'] ?? $donor['availability_status'] ?? ''); ?></textarea>
                             </div>
                             <h3 style="color: #2c3e50; margin: 30px 0 20px 0; padding-top: 20px; padding-bottom: 10px; border-top: 2px solid #e0e0e0; border-bottom: 2px solid #3498db;">Tell Us About Yourself</h3>
                             
@@ -636,7 +651,5 @@ if (isset($_GET['updated']) && $_GET['updated'] == '1' && isset($_SESSION['succe
             });
         });
     </script>
-</body>
-</html>
 </body>
 </html>

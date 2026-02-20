@@ -78,6 +78,7 @@
   <link rel="stylesheet" href="assets/css/profile-switcher.css">
   <link rel="stylesheet" href="assets/css/notification-bell.css">
   <link rel="stylesheet" href="assets/css/style.css">
+  <link rel="stylesheet" href="assets/css/header-improved.css">
 
   <script type="text/javascript">
     function openWhatsApp() {
@@ -88,7 +89,7 @@
     }
 
     function openDonation() {
-      window.location.href = "donations";
+      window.location.href = "donation-requests-manager";
     }
   </script>
 

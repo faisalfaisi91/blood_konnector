@@ -30,6 +30,28 @@ if (!$hasLifeLine) {
     exit();
 }
 
+// Check approval_status if column exists
+$approvalPending = false;
+$approvalRejected = false;
+if (isset($lifelineProfile['approval_status'])) {
+    if ($lifelineProfile['approval_status'] === 'pending') {
+        $approvalPending = true;
+    } elseif ($lifelineProfile['approval_status'] === 'rejected') {
+        $approvalRejected = true;
+    }
+}
+
+if ($approvalRejected) {
+    $_SESSION['error'] = "Your LifeLine profile was rejected. Please contact support for assistance.";
+    header('Location: lifeline-panel.php');
+    exit();
+}
+if ($approvalPending) {
+    $_SESSION['info'] = "Your LifeLine profile is pending admin approval. You will get access once it is verified.";
+    header('Location: lifeline-panel.php');
+    exit();
+}
+
 // Fetch recipient basic info
 $recipientStmt = $conn->prepare("SELECT * FROM recipients WHERE user_id = ? LIMIT 1");
 $recipientStmt->bind_param("s", $userId);
@@ -985,6 +1007,9 @@ $successRate = $totalRequests > 0 ? round(($stats['total_successful'] / $totalRe
                                 <a href="lifeline-panel.php" class="btn btn-outline">
                                     <i class="fas fa-edit"></i> Edit Profile
                                 </a>
+                                <a href="donation-requests-manager" class="btn btn-outline">
+                                    <i class="fas fa-tint"></i> Blood Donation Requests
+                                </a>
                             </div>
                         </div>
                     </div>
@@ -1151,7 +1176,7 @@ $successRate = $totalRequests > 0 ? round(($stats['total_successful'] / $totalRe
                                     <div class="request-header">
                                         <div class="request-date">
                                             <i class="fas fa-calendar"></i>
-                                            <?php echo date('M d, Y - H:i', strtotime($req['preferred_date'] . ' ' . $req['preferred_time'])); ?>
+                                            <?php echo format_display_date($req['preferred_date'] . ' ' . $req['preferred_time']); ?>
                                         </div>
                                         <span class="request-status status-<?php echo htmlspecialchars($req['status']); ?>">
                                             <?php echo ucfirst(str_replace('_', ' ', htmlspecialchars($req['status']))); ?>
@@ -1228,7 +1253,7 @@ $successRate = $totalRequests > 0 ? round(($stats['total_successful'] / $totalRe
                                     <div class="request-header">
                                         <div class="request-date">
                                             <i class="fas fa-calendar-check"></i>
-                                            <?php echo date('M d, Y - H:i', strtotime($donation['preferred_date'] . ' ' . $donation['preferred_time'])); ?>
+                                            <?php echo format_display_date($donation['preferred_date'] . ' ' . $donation['preferred_time']); ?>
                                         </div>
                                         <span class="request-status status-confirmed">Confirmed</span>
                                     </div>
@@ -1319,7 +1344,7 @@ $successRate = $totalRequests > 0 ? round(($stats['total_successful'] / $totalRe
                                             <?php echo htmlspecialchars($notif['message']); ?>
                                         </div>
                                         <div class="notification-time">
-                                            <i class="fas fa-clock"></i> <?php echo date('M d, Y H:i', strtotime($notif['created_at'])); ?>
+                                            <i class="fas fa-clock"></i> <?php echo format_display_date($notif['created_at']); ?>
                                         </div>
                                     </div>
                                     <div>
@@ -1358,7 +1383,7 @@ $successRate = $totalRequests > 0 ? round(($stats['total_successful'] / $totalRe
                                     <div class="request-header">
                                         <div class="request-date">
                                             <i class="fas fa-calendar-check"></i>
-                                            <?php echo date('M d, Y - H:i', strtotime($feedback['preferred_date'] . ' ' . $feedback['preferred_time'])); ?>
+                                            <?php echo format_display_date($feedback['preferred_date'] . ' ' . $feedback['preferred_time']); ?>
                                         </div>
                                     </div>
 
@@ -1442,7 +1467,7 @@ $successRate = $totalRequests > 0 ? round(($stats['total_successful'] / $totalRe
                                         <div class="request-header">
                                             <div class="request-date">
                                                 <i class="fas fa-calendar-check"></i>
-                                                <?php echo date('M d, Y - H:i', strtotime($donation['preferred_date'] . ' ' . $donation['preferred_time'])); ?>
+                                                <?php echo format_display_date($donation['preferred_date'] . ' ' . $donation['preferred_time']); ?>
                                             </div>
                                             <span class="request-status status-completed">Completed</span>
                                         </div>

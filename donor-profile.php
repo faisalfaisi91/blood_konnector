@@ -325,7 +325,7 @@ $onlineStatus = $profileManager->isUserOnline();
                                 <h3>Medical Information</h3>
                                 <p><strong>Health Status:</strong> <?= htmlspecialchars($donor['health_status'] ? $donor['health_status'] : 'Not specified') ?></p>
                                 <p><strong>Medical Conditions:</strong> <?= htmlspecialchars($donor['medical_conditions'] ? $donor['medical_conditions'] : 'None') ?></p>
-                                <p><strong>Last Donation Date:</strong> <?= $donor['last_donation_date'] ? htmlspecialchars(date('F j, Y', strtotime($donor['last_donation_date']))) : 'Not available' ?></p>
+                                <p><strong>Last Donation Date:</strong> <?= $donor['last_donation_date'] ? htmlspecialchars(format_display_date($donor['last_donation_date'], false)) : 'Not available' ?></p>
 
                                 <?php if (!empty($donor['blood_test_report'])): ?>
                                     <div class="mt-3">

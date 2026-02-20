@@ -133,7 +133,7 @@ $conversations = $stmt->get_result();
                                         } elseif ($timeAgo < 86400) {
                                             echo floor($timeAgo/3600) . 'h ago';
                                         } else {
-                                            echo date('M j', strtotime($conv['last_message_time']));
+                                            echo format_display_date($conv['last_message_time'], false);
                                         }
                                         ?>
                                     </small>

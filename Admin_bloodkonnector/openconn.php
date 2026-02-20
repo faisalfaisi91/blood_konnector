@@ -1,6 +1,7 @@
 <?php
 	// Load environment configuration
 	require_once __DIR__ . '/../config.php';
+	require_once __DIR__ . '/../assets/lib/date-helper.php';
 
 	// Get database credentials from environment variables (no defaults - .env required)
 	$servername = env('DB_HOST') ?: die('Error: DB_HOST not configured in .env file');

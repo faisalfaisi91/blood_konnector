@@ -234,7 +234,7 @@ include('assets/includes/link-css.php');
                             <span class="status-badge status-<?= $req['status']; ?> ms-2"><?= htmlspecialchars($req['status']); ?></span>
                             <span class="urgency-badge urgency-<?= $req['urgency'] ?? 'normal'; ?> ms-2"><?= htmlspecialchars($req['urgency'] ?? 'normal'); ?></span>
                         </div>
-                        <small class="text-muted"><?= date('M d, Y h:i A', strtotime($req['created_at'])); ?></small>
+                        <small class="text-muted"><?= format_display_date($req['created_at']); ?></small>
                     </div>
                     
                     <div class="recipient-info">
@@ -291,7 +291,7 @@ include('assets/includes/link-css.php');
                             <span class="status-badge status-pending ms-2">Pending</span>
                             <span class="urgency-badge urgency-<?= $req['urgency'] ?? 'normal'; ?> ms-2"><?= htmlspecialchars($req['urgency'] ?? 'normal'); ?></span>
                         </div>
-                        <small class="text-muted"><?= date('M d, Y h:i A', strtotime($req['created_at'])); ?></small>
+                        <small class="text-muted"><?= format_display_date($req['created_at']); ?></small>
                     </div>
                     
                     <div class="row mt-3">

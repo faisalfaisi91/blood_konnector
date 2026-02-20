@@ -24,20 +24,37 @@ $user = [
     'verified' => !empty($recipient['verified']) && $recipient['verified'] == 1
 ];
 
-// Dummy requests (replace with real DB queries)
-$activeRequests = [
-    [
-        'id' => 'REQ1234',
-        'status' => 'Pending',
-        'blood_group' => 'A+',
-        'units' => 2,
-        'urgency' => 'High',
-        'hospital' => 'City Hospital',
-        'city' => 'Metropolis',
-        'doctor' => 'Dr. Smith',
-        'created_at' => '2026-01-28',
-    ]
-];
+// Active blood requests from emergency_requests
+$activeRequests = [];
+$tblChk = @$conn->query("SHOW TABLES LIKE 'emergency_requests'");
+if ($tblChk && $tblChk->num_rows > 0) {
+    $rq = $conn->prepare("
+        SELECT lr.id, lr.status, lr.preferred_date, lr.preferred_time, lr.location, lr.city, lr.urgency, lr.created_at,
+               COALESCE(lr.blood_type, r.blood_type) AS blood_group
+        FROM emergency_requests lr
+        LEFT JOIN recipients r ON r.user_id = lr.recipient_id
+        WHERE lr.recipient_id = ?
+        ORDER BY lr.created_at DESC
+        LIMIT 20
+    ");
+    $rq->bind_param("s", $userId);
+    $rq->execute();
+    $res = $rq->get_result();
+    while ($row = $res->fetch_assoc()) {
+        $activeRequests[] = [
+            'id' => $row['id'],
+            'status' => $row['status'],
+            'blood_group' => $row['blood_group'] ?? '—',
+            'units' => 1,
+            'urgency' => $row['urgency'] ?? 'normal',
+            'hospital' => $row['location'] ?? '—',
+            'city' => $row['city'] ?? '—',
+            'doctor' => '—',
+            'created_at' => $row['created_at'] ?? $row['preferred_date'] ?? '—',
+        ];
+    }
+    $rq->close();
+}
 
 // Dummy matched donors (replace with real DB queries)
 $matchedDonors = [
@@ -49,6 +66,21 @@ $matchedDonors = [
         'available' => true
     ]
 ];
+
+// Completion asks (blood donations awaiting yes/no/reschedule from recipient)
+$completion_asks = [];
+$chk = @$conn->query("SHOW TABLES LIKE 'blood_donations'");
+if ($chk && $chk->num_rows > 0) {
+    $colChk = @$conn->query("SHOW COLUMNS FROM blood_donations LIKE 'completion_asked_at'");
+    if ($colChk && $colChk->num_rows > 0) {
+        $q = $conn->prepare("SELECT bd.*, u.first_name AS donor_first, u.last_name AS donor_last FROM blood_donations bd JOIN users u ON u.user_id = bd.donor_id WHERE bd.recipient_id = ? AND bd.status = 'scheduled' AND bd.completion_asked_at IS NOT NULL");
+        $q->bind_param("s", $userId);
+        $q->execute();
+        $res = $q->get_result();
+        while ($r = $res->fetch_assoc()) $completion_asks[] = $r;
+        $q->close();
+    }
+}
 
 // Dummy donation history (replace with real DB queries)
 $donationHistory = [
@@ -249,6 +281,37 @@ $donationHistory = [
                 <div class="stat-label">Unread Messages</div>
             </div>
         </div>
+
+        <!-- Completion Confirmation (Was the donation completed?) -->
+        <?php if (count($completion_asks) > 0): ?>
+        <div class="card mb-4" style="border-left: 4px solid var(--primary);">
+            <h2 class="section-title"><i class="fas fa-question-circle"></i> Was the donation completed?</h2>
+            <?php foreach ($completion_asks as $ca): ?>
+            <div class="donation-item" style="padding: 1rem; background: #f0f9ff; border-radius: 8px; margin-bottom: 1rem;">
+                <div class="donation-info">
+                    <strong><?= htmlspecialchars(($ca['donor_first'] ?? '') . ' ' . ($ca['donor_last'] ?? '')) ?></strong>
+                    <div><?= htmlspecialchars(format_display_date(($ca['donation_date'] ?? '') . ' ' . ($ca['donation_time'] ?? '00:00'))) ?> - <?= htmlspecialchars($ca['location'] ?? '') ?></div>
+                </div>
+                <div class="completion-response" data-id="<?= (int)$ca['id'] ?>">
+                    <div style="display: flex; gap: 0.5rem; flex-wrap: wrap; margin-bottom: 0.5rem;">
+                        <button type="button" class="btn btn-success btn-sm completion-yes">Yes</button>
+                        <button type="button" class="btn btn-danger btn-sm completion-no">No</button>
+                        <button type="button" class="btn btn-warning btn-sm completion-reschedule">Reschedule</button>
+                    </div>
+                    <div class="remarks-row" style="display: none;">
+                        <input type="text" class="form-control remarks-input" placeholder="Remarks (optional)" style="margin-bottom: 0.5rem;">
+                        <div class="reschedule-fields" style="display: none;">
+                            <input type="date" class="form-control new-date-input" style="margin-bottom: 0.25rem;">
+                            <input type="time" class="form-control new-time-input" style="margin-bottom: 0.5rem;">
+                        </div>
+                        <button type="button" class="btn btn-primary btn-sm submit-completion">Submit</button>
+                    </div>
+                </div>
+            </div>
+            <?php endforeach; ?>
+        </div>
+        <?php endif; ?>
+
         <!-- Profile Summary -->
         <div class="card mb-4">
             <h2 class="section-title">Profile Summary</h2>
@@ -273,6 +336,9 @@ $donationHistory = [
                 </a>
                 <a href="recipient-inbox.php" class="btn-dashboard btn-secondary-dashboard">
                     <i class="fas fa-inbox"></i> Messages
+                </a>
+                <a href="donation-requests-manager" class="btn-dashboard btn-secondary-dashboard">
+                    <i class="fas fa-tint"></i> Blood Donation Requests
                 </a>
             </div>
         </div>
@@ -301,9 +367,9 @@ $donationHistory = [
                             <td><?= htmlspecialchars($req['hospital']) ?></td>
                             <td><?= htmlspecialchars($req['city']) ?></td>
                             <td><?= htmlspecialchars($req['doctor']) ?></td>
-                            <td><?= htmlspecialchars($req['created_at']) ?></td>
+                            <td><?= htmlspecialchars(format_display_date($req['created_at'])) ?></td>
                             <td>
-                                <a href="recipient-request-detail.php?id=<?= urlencode($req['id']) ?>" class="btn btn-sm btn-info">View</a>
+                                <a href="donation-request-detail?id=<?= urlencode($req['id']) ?>" class="btn btn-sm btn-info">View Details</a>
                                 <a href="edit-recipient-request.php?id=<?= urlencode($req['id']) ?>" class="btn btn-sm btn-warning">Edit</a>
                                 <a href="cancel-recipient-request.php?id=<?= urlencode($req['id']) ?>" class="btn btn-sm btn-danger" onclick="return confirm('Cancel this request?');">Cancel</a>
                             </td>
@@ -370,7 +436,7 @@ $donationHistory = [
                             <td><?= htmlspecialchars($don['blood_group']) ?></td>
                             <td><?= htmlspecialchars($don['units']) ?></td>
                             <td><?= htmlspecialchars($don['hospital']) ?></td>
-                            <td><?= htmlspecialchars($don['date']) ?></td>
+                            <td><?= htmlspecialchars(format_display_date($don['date'] ?? '', false)) ?></td>
                             <td><?= htmlspecialchars($don['status']) ?></td>
                             <td><?= $don['proof'] ? '<a href="#">View</a>' : '-' ?></td>
                             <td><?= htmlspecialchars($don['feedback']) ?></td>
@@ -480,6 +546,46 @@ $donationHistory = [
         </div>
     </div>
 </div>
+<?php if (count($completion_asks) > 0): ?>
+<script>
+document.querySelectorAll('.completion-response').forEach(function(block) {
+    const id = block.dataset.id;
+    const yesBtn = block.querySelector('.completion-yes');
+    const noBtn = block.querySelector('.completion-no');
+    const rescheduleBtn = block.querySelector('.completion-reschedule');
+    const remarksRow = block.querySelector('.remarks-row');
+    const remarksInput = block.querySelector('.remarks-input');
+    const rescheduleFields = block.querySelector('.reschedule-fields');
+    const submitBtn = block.querySelector('.submit-completion');
+    let chosenResponse = null;
+    function showRemarks(showReschedule) {
+        remarksRow.style.display = 'block';
+        rescheduleFields.style.display = showReschedule ? 'block' : 'none';
+    }
+    yesBtn && yesBtn.addEventListener('click', function() { chosenResponse = 'yes'; showRemarks(false); });
+    noBtn && noBtn.addEventListener('click', function() { chosenResponse = 'no'; showRemarks(false); });
+    rescheduleBtn && rescheduleBtn.addEventListener('click', function() { chosenResponse = 'reschedule'; showRemarks(true); });
+    submitBtn && submitBtn.addEventListener('click', async function() {
+        const fd = new FormData();
+        fd.append('action', 'completion_response');
+        fd.append('blood_donation_id', id);
+        fd.append('response', chosenResponse);
+        fd.append('remarks', remarksInput ? remarksInput.value : '');
+        if (chosenResponse === 'reschedule') {
+            fd.append('new_date', block.querySelector('.new-date-input') ? block.querySelector('.new-date-input').value : '');
+            fd.append('new_time', block.querySelector('.new-time-input') ? block.querySelector('.new-time-input').value : '');
+        }
+        submitBtn.disabled = true;
+        try {
+            const res = await fetch('assets/lib/scheduling-api.php', { method: 'POST', body: fd });
+            const json = await res.json();
+            if (json.success) location.reload();
+            else alert(json.error || 'Failed');
+        } catch (e) { alert('Error'); }
+    });
+});
+</script>
+<?php endif; ?>
 <?php require_once __DIR__ . '/assets/includes/footer.php'; ?>
 </body>
 </html>

@@ -534,7 +534,7 @@ $recipients = $stmt->get_result();
                                     <div class="message-bubble">
                                         <?= htmlspecialchars($msg['message']) ?>
                                         <div class="message-time">
-                                            <?= date('h:i A', strtotime($msg['timestamp'])) ?>
+                                            <?= format_display_date($msg['timestamp']) ?>
                                         </div>
                                     </div>
                                 </div>
