@@ -329,3 +329,125 @@ function getBaseUrl() {
     return rtrim(env('BASE_URL', 'http://localhost/blood_konnector'), '/');
 }
 
+/**
+ * Send email to donor when a new blood donation request is received (emergency or lifeline).
+ *
+ * @param string $donorEmail
+ * @param string $donorName
+ * @param string $bloodType
+ * @param string $city
+ * @param string $requestType 'emergency' or 'lifeline'
+ * @param string|null $viewUrl Optional view URL (defaults to emergency-donor or lifeline-donor-requests)
+ * @return bool
+ */
+function sendNewBloodRequestEmailToDonor($donorEmail, $donorName, $bloodType, $city, $requestType = 'emergency', $viewUrl = null) {
+    if (empty($donorEmail) || !filter_var($donorEmail, FILTER_VALIDATE_EMAIL)) {
+        return false;
+    }
+    try {
+        if (!function_exists('env')) {
+            require_once __DIR__ . '/../../config.php';
+        }
+        $mail = getConfiguredMailer();
+        $mail->addAddress($donorEmail, $donorName);
+        $baseUrl = getBaseUrl();
+        if ($viewUrl === null) {
+            $viewUrl = $requestType === 'lifeline' ? $baseUrl . '/lifeline-donor-requests' : $baseUrl . '/emergency-donor';
+        }
+        $title = $requestType === 'lifeline' ? 'New LifeLine Blood Donation Request' : 'New Blood Donation Request';
+        $mail->Subject = $title . ' - ' . $bloodType;
+        $mail->isHTML(true);
+        $mail->Body = '
+        <div style="font-family: Arial, sans-serif; max-width:600px; margin:20px auto; border:1px solid #eee; border-radius:8px; overflow:hidden; box-shadow:0 0 8px rgba(0,0,0,0.05);">
+            <div style="background-color:#EA062B; color:white; padding:20px; text-align:center;">
+                <h2 style="margin:0; color:white;">' . htmlspecialchars($title) . '</h2>
+            </div>
+            <div style="padding:20px; color:#333;">
+                <p style="margin:10px 0;">Hi <strong>' . htmlspecialchars($donorName ?: 'Donor') . '</strong>,</p>
+                <p style="margin:10px 0;">A new blood donation request has been created that matches your profile.</p>
+                <div style="background:#f8f9fa; padding:15px; border-radius:6px; margin:20px 0;">
+                    <p style="margin:5px 0;"><strong>Blood Type:</strong> ' . htmlspecialchars($bloodType) . '</p>
+                    <p style="margin:5px 0;"><strong>Location:</strong> ' . htmlspecialchars($city) . '</p>
+                </div>
+                <table width="100%" cellpadding="0" cellspacing="0" style="margin:30px 0;">
+                    <tr>
+                        <td align="center">
+                            <a href="' . htmlspecialchars($viewUrl) . '" target="_blank" style="background-color:#EA062B; color:#ffffff; padding:14px 28px; border-radius:6px; text-decoration:none; font-weight:bold; display:inline-block; font-size:16px;">View Request</a>
+                        </td>
+                    </tr>
+                </table>
+                <p style="margin-top:30px; font-size:13px; color:#666;">Regards,<br><strong>The Blood Konnector Team</strong></p>
+            </div>
+        </div>';
+        $mail->AltBody = "Hi " . ($donorName ?: 'Donor') . ",\n\nA new blood donation request has been created.\n\nBlood Type: " . $bloodType . "\nLocation: " . $city . "\n\nView the request: " . $viewUrl . "\n\nRegards,\nThe Blood Konnector Team";
+        $mail->send();
+        return true;
+    } catch (Exception $e) {
+        error_log("New request email to donor failed for $donorEmail: " . $e->getMessage());
+        return false;
+    } catch (\Exception $e) {
+        error_log("New request email to donor failed for $donorEmail: " . $e->getMessage());
+        return false;
+    }
+}
+
+/**
+ * Send email to recipient when a donor has accepted their blood request.
+ *
+ * @param string $recipientEmail
+ * @param string $recipientName
+ * @param string $donorName
+ * @param string $requestType 'emergency' or 'lifeline'
+ * @param string|null $viewUrl Optional view URL
+ * @return bool
+ */
+function sendDonorAcceptedEmailToRecipient($recipientEmail, $recipientName, $donorName, $requestType = 'emergency', $viewUrl = null) {
+    if (empty($recipientEmail) || !filter_var($recipientEmail, FILTER_VALIDATE_EMAIL)) {
+        return false;
+    }
+    try {
+        if (!function_exists('env')) {
+            require_once __DIR__ . '/../../config.php';
+        }
+        $mail = getConfiguredMailer();
+        $mail->addAddress($recipientEmail, $recipientName);
+        $baseUrl = getBaseUrl();
+        if ($viewUrl === null) {
+            $viewUrl = $requestType === 'lifeline' ? $baseUrl . '/lifeline-panel' : $baseUrl . '/emergency-recipient';
+        }
+        $mail->Subject = 'Good news: A donor has accepted your blood request';
+        $mail->isHTML(true);
+        $mail->Body = '
+        <div style="font-family: Arial, sans-serif; max-width:600px; margin:20px auto; border:1px solid #eee; border-radius:8px; overflow:hidden; box-shadow:0 0 8px rgba(0,0,0,0.05);">
+            <div style="background-color:#27ae60; color:white; padding:20px; text-align:center;">
+                <h2 style="margin:0; color:white;">Request Accepted</h2>
+            </div>
+            <div style="padding:20px; color:#333;">
+                <p style="margin:10px 0;">Hi <strong>' . htmlspecialchars($recipientName ?: 'there') . '</strong>,</p>
+                <p style="margin:10px 0;">A donor has accepted your blood donation request.</p>
+                <div style="background:#f8f9fa; padding:15px; border-radius:6px; margin:20px 0;">
+                    <p style="margin:5px 0;"><strong>Donor:</strong> ' . htmlspecialchars($donorName ?: 'Donor') . '</p>
+                    <p style="margin:5px 0;">You can coordinate the donation through the platform.</p>
+                </div>
+                <table width="100%" cellpadding="0" cellspacing="0" style="margin:30px 0;">
+                    <tr>
+                        <td align="center">
+                            <a href="' . htmlspecialchars($viewUrl) . '" target="_blank" style="background-color:#EA062B; color:#ffffff; padding:14px 28px; border-radius:6px; text-decoration:none; font-weight:bold; display:inline-block; font-size:16px;">View Request</a>
+                        </td>
+                    </tr>
+                </table>
+                <p style="margin-top:30px; font-size:13px; color:#666;">Regards,<br><strong>The Blood Konnector Team</strong></p>
+            </div>
+        </div>';
+        $mail->AltBody = "Hi " . ($recipientName ?: 'there') . ",\n\nA donor has accepted your blood donation request.\n\nDonor: " . ($donorName ?: 'Donor') . "\n\nView: " . $viewUrl . "\n\nRegards,\nThe Blood Konnector Team";
+        $mail->send();
+        return true;
+    } catch (Exception $e) {
+        error_log("Donor accepted email to recipient failed for $recipientEmail: " . $e->getMessage());
+        return false;
+    } catch (\Exception $e) {
+        error_log("Donor accepted email to recipient failed for $recipientEmail: " . $e->getMessage());
+        return false;
+    }
+}
+

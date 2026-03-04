@@ -55,12 +55,14 @@ function findMatchingDonors($conn, $bloodType, $city) {
     $donors = [];
     
     // Find donors with matching blood type and city (case-insensitive partial match)
+    // Exclude donors who donated in the last 4 months (not eligible for matching/invites)
     $query = "
         SELECT d.user_id, d.blood_type, d.location,
                u.first_name, u.last_name, u.email
         FROM donors d
         INNER JOIN users u ON d.user_id = u.user_id
         WHERE d.blood_type = ?
+          AND (d.last_donation_date IS NULL OR d.last_donation_date <= DATE_SUB(CURDATE(), INTERVAL 4 MONTH))
           AND (? = '' OR LOWER(d.location) LIKE LOWER(CONCAT('%', ?, '%')) OR LOWER(?) LIKE LOWER(CONCAT('%', d.location, '%')))
         ORDER BY 
             CASE WHEN ? != '' AND (LOWER(d.location) LIKE LOWER(CONCAT('%', ?, '%')) OR LOWER(?) LIKE LOWER(CONCAT('%', d.location, '%'))) THEN 1 ELSE 2 END,

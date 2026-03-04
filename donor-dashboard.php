@@ -51,6 +51,16 @@ if ($last_donation) {
     $next_donation_date = strtotime('+4 months', $last_donation);
 }
 
+// Countdown text for "next donation" (when in 4-month window) — used for initial display and JS updates
+$next_donation_countdown_text = '';
+if ($next_donation_date && $next_donation_date > time()) {
+    $diff = $next_donation_date - time();
+    $d = (int) floor($diff / 86400);
+    $h = (int) floor(($diff % 86400) / 3600);
+    $m = (int) floor(($diff % 3600) / 60);
+    $next_donation_countdown_text = $d . 'd ' . $h . 'h ' . $m . 'm';
+}
+
 // Total donations count (from blood_donations if table exists)
 $total_donations = 0;
 $donation_history = [];
@@ -311,6 +321,11 @@ if (!empty($blood_type) && $blood_type !== 'Not specified') {
             font-size: 0.95rem;
             color: var(--text-light);
             font-weight: 500;
+        }
+
+        .stat-number-countdown {
+            font-variant-numeric: tabular-nums;
+            word-break: break-word;
         }
 
         .stat-card-icon {
@@ -634,6 +649,23 @@ if (!empty($blood_type) && $blood_type !== 'Not specified') {
                     <div class="stat-label">Donor Status</div>
                 </div>
 
+                <!-- Next blood donation countdown -->
+                <div class="stat-card <?= $is_active_for_donation ? 'success' : 'warning' ?>" id="next-donation-stat-card">
+                    <div class="stat-card-icon">
+                        <i class="fas fa-clock"></i>
+                    </div>
+                    <div class="stat-number stat-number-countdown" style="font-size: 1.25rem;">
+                        <?php if ($is_active_for_donation): ?>
+                            <span class="next-donation-eligible">Eligible now</span>
+                        <?php elseif ($next_donation_countdown_text): ?>
+                            <span class="next-donation-countdown"><?= htmlspecialchars($next_donation_countdown_text) ?></span>
+                        <?php else: ?>
+                            <span class="next-donation-eligible">Eligible now</span>
+                        <?php endif; ?>
+                    </div>
+                    <div class="stat-label">Next donation</div>
+                </div>
+
                 <div class="stat-card success">
                     <div class="stat-card-icon">
                         <i class="fas fa-check-circle"></i>
@@ -755,12 +787,17 @@ if (!empty($blood_type) && $blood_type !== 'Not specified') {
                         </div>
                     </div>
 
-                    <?php if ($next_donation_date && $next_donation_date > time()): ?>
-                    <div class="countdown-box" style="background: #f0f9ff; padding: 1rem; border-radius: 8px; margin: 1rem 0; border-left: 4px solid var(--primary);">
-                        <strong><i class="fas fa-clock"></i> Next Donation:</strong> 
-                        <span id="donation-countdown"><?= format_display_date($next_donation_date, false) ?></span>
+                    <!-- Next blood donation countdown (always visible) -->
+                    <div class="countdown-box next-donation-countdown-box" style="background: <?= $is_active_for_donation ? '#e8f5e9' : '#f0f9ff' ?>; padding: 1rem; border-radius: 8px; margin: 1rem 0; border-left: 4px solid <?= $is_active_for_donation ? 'var(--success)' : 'var(--primary)' ?>;">
+                        <strong><i class="fas fa-clock"></i> Next donation:</strong>
+                        <?php if ($is_active_for_donation): ?>
+                            <span class="next-donation-eligible">You are eligible to donate now.</span>
+                        <?php elseif ($next_donation_countdown_text): ?>
+                            <span class="next-donation-countdown"><?= htmlspecialchars($next_donation_countdown_text) ?></span><span class="countdown-suffix"> until eligible</span>
+                        <?php else: ?>
+                            <span class="next-donation-eligible">You are eligible to donate now.</span>
+                        <?php endif; ?>
                     </div>
-                    <?php endif; ?>
 
                     <!-- Donor Availability Toggle -->
                     <div class="toggle-row" style="display: flex; align-items: center; justify-content: space-between; padding: 1rem 0; border-top: 1px solid #e2e8f0; margin-top: 1rem;">
@@ -938,22 +975,43 @@ if (!empty($blood_type) && $blood_type !== 'Not specified') {
         } catch (e) { alert('Failed to update'); }
     });
 
-    // Next donation countdown (if element exists)
+    // Next donation countdown — updates all .next-donation-countdown elements every second
     <?php if ($next_donation_date && $next_donation_date > time()): ?>
     (function() {
-        const target = <?= $next_donation_date ?> * 1000;
+        const targetMs = <?= $next_donation_date ?> * 1000;
+        function formatCountdown(ms) {
+            if (ms <= 0) return { text: 'Eligible now', done: true };
+            const s = Math.floor(ms / 1000);
+            const d = Math.floor(s / 86400);
+            const h = Math.floor((s % 86400) / 3600);
+            const m = Math.floor((s % 3600) / 60);
+            const sec = s % 60;
+            const text = d + 'd ' + h + 'h ' + m + 'm ' + sec + 's';
+            return { text: text, done: false };
+        }
         function update() {
-            const now = Date.now();
-            if (now >= target) {
-                document.getElementById('donation-countdown').textContent = 'Eligible now';
-                return;
+            const diff = targetMs - Date.now();
+            const result = formatCountdown(diff);
+            document.querySelectorAll('.next-donation-countdown').forEach(function(el) {
+                el.textContent = result.text;
+            });
+            if (result.done) {
+                document.querySelectorAll('.next-donation-countdown').forEach(function(el) {
+                    el.textContent = 'Eligible now';
+                    el.classList.add('next-donation-eligible');
+                });
+                document.querySelectorAll('.countdown-suffix').forEach(function(el) {
+                    el.textContent = '';
+                });
+                var card = document.getElementById('next-donation-stat-card');
+                if (card) { card.classList.remove('warning'); card.classList.add('success'); }
+                var box = document.querySelector('.next-donation-countdown-box');
+                if (box) { box.style.background = '#e8f5e9'; box.style.borderLeftColor = 'var(--success)'; }
+                if (typeof clearInterval !== 'undefined') clearInterval(timer);
             }
-            const d = Math.floor((target - now) / 86400000);
-            const h = Math.floor(((target - now) % 86400000) / 3600000);
-            document.getElementById('donation-countdown').textContent = d + ' days, ' + h + ' hours';
         }
         update();
-        setInterval(update, 3600000);
+        var timer = setInterval(update, 1000);
     })();
     <?php endif; ?>
 

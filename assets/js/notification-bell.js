@@ -1,10 +1,14 @@
 /**
  * Notification Bell Component
- * Handles fetching, displaying, and auto-refreshing notifications
+ * Handles fetching, displaying, and auto-refreshing notifications.
+ * Plays alert sound and shows browser notification when new requests arrive.
  */
 
 let notificationRefreshInterval = null;
+let lastKnownUnreadCount = null;       // blood request notifications
+let lastKnownMessageCount = null;      // unread messages (as recipient)
 const NOTIFICATION_REFRESH_INTERVAL = 30000; // 30 seconds
+const NOTIFICATION_POLL_INTERVAL = 45000;   // 45 seconds for unread count poll (alert check)
 
 // Initialize notification bell when DOM is ready
 document.addEventListener('DOMContentLoaded', function() {
@@ -13,7 +17,110 @@ document.addEventListener('DOMContentLoaded', function() {
     if (notificationBell || notificationBellMobile) {
         initNotificationBell();
     }
+    // Also run notification alert polling on pages that may not have the bell (e.g. donor dashboard)
+    initNotificationAlertPolling();
 });
+
+/**
+ * Play a short notification beep using Web Audio API (no external file).
+ */
+function playNotificationSound() {
+    try {
+        const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+        const oscillator = audioContext.createOscillator();
+        const gainNode = audioContext.createGain();
+        oscillator.connect(gainNode);
+        gainNode.connect(audioContext.destination);
+        oscillator.frequency.value = 800;
+        oscillator.type = 'sine';
+        gainNode.gain.setValueAtTime(0.2, audioContext.currentTime);
+        gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.3);
+        oscillator.start(audioContext.currentTime);
+        oscillator.stop(audioContext.currentTime + 0.3);
+    } catch (e) {
+        console.warn('Notification sound failed:', e);
+    }
+}
+
+/**
+ * Request browser notification permission and show a notification when new requests arrive.
+ */
+function requestNotificationPermission(callback) {
+    if (!('Notification' in window)) return;
+    if (Notification.permission === 'granted') {
+        if (callback) callback();
+        return;
+    }
+    if (Notification.permission !== 'denied') {
+        Notification.requestPermission().then(function(permission) {
+            if (permission === 'granted' && callback) callback();
+        });
+    }
+}
+
+function showBrowserNotification(title, body, tag) {
+    if (!('Notification' in window) || Notification.permission !== 'granted') return;
+    try {
+        var icon = '';
+        var link = document.querySelector('link[rel="icon"]');
+        if (link && link.href) icon = link.href;
+        const n = new Notification(title || 'Blood Konnector', {
+            body: body || 'You have a new notification.',
+            tag: tag || 'blood-konnector-notification',
+            icon: icon
+        });
+        n.onclick = function() {
+            window.focus();
+            n.close();
+        };
+        setTimeout(function() { n.close(); }, 8000);
+    } catch (e) {
+        console.warn('Browser notification failed:', e);
+    }
+}
+
+/**
+ * Poll for unread count (notifications + messages) and trigger sound + browser notification when either increases.
+ */
+function initNotificationAlertPolling() {
+    requestNotificationPermission();
+    function pollUnreadCounts() {
+        if (document.hidden) return;
+        // Blood request / donor notifications
+        fetch('assets/lib/emergency-api.php?action=get_unread_count', { credentials: 'same-origin' })
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                if (!data.success || typeof data.unread_count !== 'number') return;
+                var count = data.unread_count;
+                if (lastKnownUnreadCount !== null && count > lastKnownUnreadCount) {
+                    playNotificationSound();
+                    var diff = count - lastKnownUnreadCount;
+                    var msg = diff === 1 ? 'New blood donation request or update.' : diff + ' new notifications.';
+                    showBrowserNotification('Blood Konnector', msg, 'blood-konnector-notification');
+                }
+                lastKnownUnreadCount = count;
+            })
+            .catch(function() {});
+        // Unread messages (user as recipient)
+        fetch('assets/lib/emergency-api.php?action=get_unread_messages_count', { credentials: 'same-origin' })
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                if (!data.success || typeof data.unread_count !== 'number') return;
+                var count = data.unread_count;
+                if (lastKnownMessageCount !== null && count > lastKnownMessageCount) {
+                    playNotificationSound();
+                    var diff = count - lastKnownMessageCount;
+                    var msg = diff === 1 ? 'You have a new message.' : 'You have ' + diff + ' new messages.';
+                    showBrowserNotification('Blood Konnector', msg, 'blood-konnector-message');
+                }
+                lastKnownMessageCount = count;
+            })
+            .catch(function() {});
+    }
+    setInterval(pollUnreadCounts, NOTIFICATION_POLL_INTERVAL);
+    // Initial fetch to set baseline (avoid alert on first load)
+    pollUnreadCounts();
+}
 
 function initNotificationBell() {
     // Load notifications on page load
@@ -40,12 +147,21 @@ function initNotificationBell() {
 }
 
 function loadNotifications() {
-    fetch('assets/lib/emergency-api.php?action=get_notifications')
+    fetch('assets/lib/emergency-api.php?action=get_notifications', { credentials: 'same-origin' })
         .then(response => response.json())
         .then(data => {
             if (data.success) {
-                updateNotificationBadge(data.unread_count || 0);
+                var newCount = data.unread_count || 0;
+                updateNotificationBadge(newCount);
                 renderNotifications(data.notifications || []);
+                // Trigger alert when unread count increases (after we have a baseline)
+                if (lastKnownUnreadCount !== null && newCount > lastKnownUnreadCount) {
+                    playNotificationSound();
+                    var diff = newCount - lastKnownUnreadCount;
+                    var msg = diff === 1 ? 'New blood donation request or update.' : diff + ' new notifications.';
+                    showBrowserNotification('Blood Konnector', msg);
+                }
+                lastKnownUnreadCount = newCount;
             } else {
                 console.error('Failed to load notifications:', data.error);
                 showNotificationError();

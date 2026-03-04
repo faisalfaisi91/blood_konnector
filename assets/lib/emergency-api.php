@@ -49,11 +49,13 @@ function emergencyAutoAssignDonor($conn, $recipientId, $bloodTypeOverride = null
     
     // Prefer donors with same blood type and same city (case-insensitive partial match)
     // Exclude donors with is_available = 0 (profile deactivated)
+    // Exclude donors who donated in the last 4 months (not eligible for matching/invites)
     $query = "
         SELECT user_id
         FROM donors
         WHERE blood_type = ?
           AND COALESCE(is_available, 1) = 1
+          AND (last_donation_date IS NULL OR last_donation_date <= DATE_SUB(CURDATE(), INTERVAL 4 MONTH))
           AND (? = '' OR LOWER(location) LIKE LOWER(CONCAT('%', ?, '%')) OR LOWER(?) LIKE LOWER(CONCAT('%', location, '%')))
         ORDER BY (CASE WHEN last_donation_date IS NULL THEN 0 ELSE 1 END), last_donation_date ASC
         LIMIT 1
@@ -69,8 +71,8 @@ function emergencyAutoAssignDonor($conn, $recipientId, $bloodTypeOverride = null
     }
     $stmt->close();
     
-    // Fallback: any donor with same blood type (exclude deactivated)
-    $fallback = $conn->prepare("SELECT user_id FROM donors WHERE blood_type = ? AND COALESCE(is_available, 1) = 1 ORDER BY (CASE WHEN last_donation_date IS NULL THEN 0 ELSE 1 END), last_donation_date ASC LIMIT 1");
+    // Fallback: any donor with same blood type (exclude deactivated and donated in last 4 months)
+    $fallback = $conn->prepare("SELECT user_id FROM donors WHERE blood_type = ? AND COALESCE(is_available, 1) = 1 AND (last_donation_date IS NULL OR last_donation_date <= DATE_SUB(CURDATE(), INTERVAL 4 MONTH)) ORDER BY (CASE WHEN last_donation_date IS NULL THEN 0 ELSE 1 END), last_donation_date ASC LIMIT 1");
     $fallback->bind_param("s", $blood);
     $fallback->execute();
     $res2 = $fallback->get_result();
@@ -151,6 +153,7 @@ function emergencyNotifyMatchingDonors($conn, $requestId, $recipientId, $bloodTy
     }
     // If null or 'unlimited', no LIMIT clause (gets all matching donors)
     
+    // Exclude donors who donated in the last 4 months (not eligible for matching/invites)
     $query = "
         SELECT d.user_id
         FROM donors d
@@ -158,6 +161,7 @@ function emergencyNotifyMatchingDonors($conn, $requestId, $recipientId, $bloodTy
         WHERE d.blood_type = ?
           AND d.user_id != ?
           AND COALESCE(d.is_available, 1) = 1
+          AND (d.last_donation_date IS NULL OR d.last_donation_date <= DATE_SUB(CURDATE(), INTERVAL 4 MONTH))
           AND d.user_id NOT IN (SELECT donor_id FROM emergency_confirmations WHERE request_id = ? AND donor_id IS NOT NULL)
         ORDER BY 
             CASE WHEN ? != '' AND (LOWER(d.location) LIKE LOWER(CONCAT('%', ?, '%')) OR LOWER(?) LIKE LOWER(CONCAT('%', d.location, '%'))) THEN 1 ELSE 2 END,
@@ -196,6 +200,17 @@ function emergencyNotifyMatchingDonors($conn, $requestId, $recipientId, $bloodTy
             $notifStmt->bind_param("ss", $donorId, $payload);
             if ($notifStmt->execute()) {
                 $notifiedDonors[] = $donorId;
+                // Send email to donor about new request
+                $emailStmt = $conn->prepare("SELECT u.email, u.first_name, u.last_name FROM users u WHERE u.user_id = ? LIMIT 1");
+                $emailStmt->bind_param("s", $donorId);
+                $emailStmt->execute();
+                $emailRes = $emailStmt->get_result();
+                if ($emailRes && $row = $emailRes->fetch_assoc() && !empty($row['email'])) {
+                    require_once __DIR__ . '/email-helper.php';
+                    $donorName = trim(($row['first_name'] ?? '') . ' ' . ($row['last_name'] ?? ''));
+                    sendNewBloodRequestEmailToDonor($row['email'], $donorName, $blood, $matchingCity, 'emergency');
+                }
+                $emailStmt->close();
             } else {
                 // Log error but continue with other donors
                 error_log("Failed to create notification for donor {$donorId}: " . $conn->error);
@@ -504,6 +519,24 @@ switch ($action) {
                 $notifStmt->bind_param("ss", $recipientId, $notifPayload);
                 $notifStmt->execute();
                 $notifStmt->close();
+
+                // Send email to recipient that donor has accepted
+                $recStmt = $conn->prepare("SELECT u.email, u.first_name, u.last_name FROM users u WHERE u.user_id = ? LIMIT 1");
+                $recStmt->bind_param("s", $recipientId);
+                $recStmt->execute();
+                $recRow = $recStmt->get_result()->fetch_assoc();
+                $recStmt->close();
+                $donorStmt = $conn->prepare("SELECT u.first_name, u.last_name FROM users u WHERE u.user_id = ? LIMIT 1");
+                $donorStmt->bind_param("s", $userId);
+                $donorStmt->execute();
+                $donorRow = $donorStmt->get_result()->fetch_assoc();
+                $donorStmt->close();
+                if ($recRow && !empty($recRow['email'])) {
+                    require_once __DIR__ . '/email-helper.php';
+                    $recipientName = trim(($recRow['first_name'] ?? '') . ' ' . ($recRow['last_name'] ?? ''));
+                    $donorName = trim(($donorRow['first_name'] ?? '') . ' ' . ($donorRow['last_name'] ?? ''));
+                    sendDonorAcceptedEmailToRecipient($recRow['email'], $recipientName, $donorName, 'emergency');
+                }
             } else {
                 // Clear reminders on decline/reschedule
                 $clr = $conn->prepare("DELETE FROM emergency_reminders WHERE request_id = ?");
@@ -655,13 +688,33 @@ switch ($action) {
         break;
 
     case 'get_unread_count':
-        $countStmt = $conn->prepare("SELECT COUNT(*) as cnt FROM emergency_notifications WHERE user_id = ? AND channel = 'in_app' AND status = 'queued' AND template_key IN ('emergency_new_request', 'emergency_donor_approved')");
+        $countStmt = $conn->prepare("SELECT COUNT(*) as cnt FROM emergency_notifications WHERE user_id = ? AND channel = 'in_app' AND status = 'queued' AND template_key IN ('emergency_new_request', 'emergency_donor_approved', 'lifeline_new_request', 'lifeline_donor_approved')");
         $countStmt->bind_param("s", $userId);
         $countStmt->execute();
         $countResult = $countStmt->get_result();
         $countRow = $countResult->fetch_assoc();
         $countStmt->close();
         respond(true, ['unread_count' => (int)($countRow['cnt'] ?? 0)]);
+        break;
+
+    case 'get_unread_messages_count':
+        // Unread messages where current user is the recipient (for notification sound/popup)
+        $msgCount = 0;
+        $msgTable = $conn->query("SHOW TABLES LIKE 'messages'");
+        if ($msgTable && $msgTable->num_rows > 0) {
+            $colCheck = $conn->query("SHOW COLUMNS FROM messages LIKE 'is_read'");
+            if ($colCheck && $colCheck->num_rows > 0) {
+                $msgStmt = $conn->prepare("SELECT COUNT(*) as cnt FROM messages WHERE recipient_id = ? AND is_read = 0");
+                $msgStmt->bind_param("s", $userId);
+                $msgStmt->execute();
+                $msgRes = $msgStmt->get_result();
+                if ($msgRes && $row = $msgRes->fetch_assoc()) {
+                    $msgCount = (int)($row['cnt'] ?? 0);
+                }
+                $msgStmt->close();
+            }
+        }
+        respond(true, ['unread_count' => $msgCount]);
         break;
 
     case 'get_notifications':

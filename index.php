@@ -28,7 +28,8 @@ if ($erTable && $erTable->num_rows > 0) {
 }
 $donorsCheck = $conn->query("SHOW TABLES LIKE 'donors'");
 if ($donorsCheck && $donorsCheck->num_rows > 0) {
-    $dr = $conn->query("SELECT COUNT(*) as cnt FROM donors");
+    // Count only donors eligible to donate (not donated in last 4 months)
+    $dr = $conn->query("SELECT COUNT(*) as cnt FROM donors WHERE (last_donation_date IS NULL OR last_donation_date <= DATE_SUB(CURDATE(), INTERVAL 4 MONTH))");
     if ($dr && $row = $dr->fetch_assoc()) {
         $stats['active_donors'] = (int)$row['cnt'];
     }
@@ -380,34 +381,34 @@ $stats['lives_impacted'] = $stats['completed_donations'];
     </section>
 
     <!-- Success Statistics Section -->
-    <section class="stats-section py-5" style="background: linear-gradient(135deg, var(--secondary-color) 0%, #374151 100%); color: var(--white);">
+    <!-- <section class="stats-section py-5" style="background: linear-gradient(135deg, var(--secondary-color) 0%, #374151 100%); color: var(--white);">
         <div class="container">
             <h2 class="text-center mb-4" style="font-weight: 600; font-size: 1.8rem;">Our Impact</h2>
             <div class="row g-4 text-center">
                 <div class="col-md-4">
                     <div class="stat-card p-4 rounded">
                         <i class="fas fa-check-circle fa-3x mb-2" style="opacity: 0.9;"></i>
-                        <h3 class="mb-1" style="font-size: 2.5rem; font-weight: 700;"><?= number_format($stats['completed_donations']) ?></h3>
+                        <h3 class="mb-1" style="font-size: 2.5rem; font-weight: 700;"> // number_format($stats['completed_donations']) ?></h3>
                         <p class="mb-0 opacity-90">Successful Donations</p>
                     </div>
                 </div>
                 <div class="col-md-4">
                     <div class="stat-card p-4 rounded">
                         <i class="fas fa-users fa-3x mb-2" style="opacity: 0.9;"></i>
-                        <h3 class="mb-1" style="font-size: 2.5rem; font-weight: 700;"><?= number_format($stats['active_donors']) ?></h3>
+                        <h3 class="mb-1" style="font-size: 2.5rem; font-weight: 700;"> //number_format($stats['active_donors']) ?></h3>
                         <p class="mb-0 opacity-90">Active Donors</p>
                     </div>
                 </div>
                 <div class="col-md-4">
                     <div class="stat-card p-4 rounded">
                         <i class="fas fa-heartbeat fa-3x mb-2" style="opacity: 0.9;"></i>
-                        <h3 class="mb-1" style="font-size: 2.5rem; font-weight: 700;"><?= number_format($stats['lives_impacted']) ?></h3>
+                        <h3 class="mb-1" style="font-size: 2.5rem; font-weight: 700;"> //number_format($stats['lives_impacted']) ?></h3>
                         <p class="mb-0 opacity-90">Lives Impacted</p>
                     </div>
                 </div>
             </div>
         </div>
-    </section>
+    </section> -->
 
     <!-- Purpose Section -->
     <section class="purpose-section">
