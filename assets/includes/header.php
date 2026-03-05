@@ -303,23 +303,20 @@
   </header>
 
 
-<!-- Fix dropdown positioning for main menu -->
+<!-- Fix dropdown positioning for main menu (Bootstrap 5); wait for bootstrap if loaded late (e.g. homepage) -->
 <script>
-document.addEventListener('DOMContentLoaded', function() {
-    // Initialize dropdowns with static positioning (no Popper.js)
-    if (typeof bootstrap !== 'undefined' && bootstrap.Dropdown) {
-        const dropdownToggles = document.querySelectorAll('.main_menu .dropdown-toggle[data-bs-toggle="dropdown"]');
-        dropdownToggles.forEach(function(toggle) {
+(function() {
+    function initMainMenuDropdowns() {
+        if (typeof bootstrap === 'undefined' || !bootstrap.Dropdown) return false;
+        var toggles = document.querySelectorAll('.main_menu .dropdown-toggle[data-bs-toggle="dropdown"]');
+        toggles.forEach(function(toggle) {
+            if (toggle.getAttribute('data-bs-dropdown-inited')) return;
             try {
-                const dropdown = new bootstrap.Dropdown(toggle, {
-                    popperConfig: null
-                });
-                
-                // Disable Popper.js positioning after initialization
+                toggle.setAttribute('data-bs-dropdown-inited', '1');
+                var dropdown = new bootstrap.Dropdown(toggle, { boundary: 'clippingParents', popperConfig: null });
                 toggle.addEventListener('shown.bs.dropdown', function() {
-                    const menu = toggle.nextElementSibling;
+                    var menu = toggle.nextElementSibling;
                     if (menu && menu.classList.contains('dropdown-menu')) {
-                        // Position directly under the toggle with negative margin to reduce gap
                         menu.style.transform = 'none';
                         menu.style.marginTop = '-35px';
                         menu.style.top = '100%';
@@ -327,23 +324,32 @@ document.addEventListener('DOMContentLoaded', function() {
                         menu.style.position = 'absolute';
                     }
                 });
-            } catch (e) {
-                console.error('Dropdown init error:', e);
-            }
+            } catch (e) { toggle.removeAttribute('data-bs-dropdown-inited'); }
         });
+        document.querySelectorAll('.main_menu .dropdown-toggle[href="#"]').forEach(function(toggle) {
+            toggle.addEventListener('click', function() {
+                setTimeout(function() {
+                    if (window.location.hash === '#') {
+                        history.replaceState(null, null, window.location.pathname + window.location.search);
+                    }
+                }, 10);
+            });
+        });
+        return true;
     }
-    
-    // Prevent hash from being added to URL
-    document.querySelectorAll('.main_menu .dropdown-toggle[href="#"]').forEach(function(toggle) {
-        toggle.addEventListener('click', function() {
-            setTimeout(function() {
-                if (window.location.hash === '#') {
-                    history.replaceState(null, null, window.location.pathname + window.location.search);
-                }
-            }, 10);
-        });
-    });
-});
+    function runWhenReady() {
+        if (initMainMenuDropdowns()) return;
+        var attempts = 0;
+        var t = setInterval(function() {
+            if (initMainMenuDropdowns() || ++attempts > 60) clearInterval(t);
+        }, 100);
+    }
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', runWhenReady);
+    } else {
+        runWhenReady();
+    }
+})();
 </script>
 
 <!--Start of Tawk.to Script-->

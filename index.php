@@ -491,7 +491,6 @@ $stats['lives_impacted'] = $stats['completed_donations'];
 
     <!-- Javascript Files -->
     <?php include('assets/includes/link-js.php'); ?>
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script>
         // Smooth scroll for buttons
         document.querySelectorAll('a[href^="#"]').forEach(anchor => {
@@ -502,6 +501,19 @@ $stats['lives_impacted'] = $stats['completed_donations'];
                 });
             });
         });
+        // Ensure Emergency/LifeLine dropdowns work on homepage (Bootstrap 5 init after all scripts)
+        (function() {
+            var toggles = document.querySelectorAll('.main_menu .dropdown-toggle[data-bs-toggle="dropdown"]');
+            if (typeof bootstrap !== 'undefined' && bootstrap.Dropdown && toggles.length) {
+                toggles.forEach(function(t) {
+                    if (t.getAttribute('data-bs-dropdown-inited')) return;
+                    try {
+                        t.setAttribute('data-bs-dropdown-inited', '1');
+                        new bootstrap.Dropdown(t, { boundary: 'clippingParents', popperConfig: null });
+                    } catch (err) {}
+                });
+            }
+        })();
     </script>
 </body>
 </html>
